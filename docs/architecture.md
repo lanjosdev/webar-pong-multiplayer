@@ -43,8 +43,15 @@ Cada cliente mantém localmente: câmera, tracking AR, pose e renderização.
 - **Networking futuro**: transporte e tradução entre contratos de rede e
   comandos/snapshots do jogo.
 
-A estrutura física de diretórios será decidida com o scaffold. As fronteiras
-acima são responsabilidades, não uma exigência de criar muitos arquivos vazios.
+## Estrutura física
+
+- `client/`: frontend Vite, com `package.json` e lockfile próprios.
+- `server/`: reservado para o backend futuro, também com package próprio.
+- `docs/`: requisitos, decisões, arquitetura e evidências.
+
+A raiz não é um workspace npm. Não crie diretórios ou módulos vazios para
+antecipar fases. Um pacote de contratos compartilhados só será extraído quando
+a fase multiplayer justificar essa fronteira.
 
 ## Direção de dependências
 
@@ -101,4 +108,3 @@ acima são responsabilidades, não uma exigência de criar muitos arquivos vazio
 - Introduzir framework de UI ou state manager.
 - Adicionar persistência, autenticação ou infraestrutura distribuída.
 - Mudar a fonte de verdade do estado do jogo.
-

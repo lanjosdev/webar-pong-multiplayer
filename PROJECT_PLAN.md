@@ -15,17 +15,16 @@ arquitetura e validação permanecem nos documentos especializados em `docs/`.
 ## Estado atual
 
 - Fase ativa: **Fase 0 — Fundação e decisões iniciais**.
-- Próximo gate: decidir a distribuição do engine 8th Wall e criar o scaffold
-  mínimo do frontend.
+- Próximo gate: integrar o engine 8th Wall ao Vite e validar um Image Target.
 - Implementação multiplayer: **adiada até a aprovação das fases 1 e 2**.
 
 ### Restrição externa confirmada
 
 A plataforma hospedada do 8th Wall foi encerrada em 28 de fevereiro de 2026.
 Este projeto novo deve integrar e hospedar uma distribuição atual do engine;
-não pode depender do editor, hosting ou credenciais da plataforma legada. A
-escolha entre o framework open source, sem SLAM, e o engine binário distribuído,
-com SLAM, continua pendente e deve ser registrada por ADR.
+não pode depender do editor, hosting ou credenciais da plataforma legada. O
+engine binário distribuído foi escolhido no ADR-0001; a integração do runtime
+com Vite permanece pendente.
 
 ## Direção do produto
 
@@ -43,20 +42,22 @@ gameplay e rede.
 - [x] Documentar diretrizes iniciais de UX/UI.
 - [x] Reservar a arquitetura multiplayer sem implementá-la.
 - [x] Catalogar fontes oficiais das tecnologias em `docs/references/`.
-- [ ] Definir gerenciador de pacotes e versão mínima do Node.js.
-- [ ] Escolher por ADR: framework open source do 8th Wall ou engine binário
+- [x] Definir npm 11.6.0 e Node.js 24.19.0 para o toolchain do cliente.
+- [x] Escolher por ADR: framework open source do 8th Wall ou engine binário
   distribuído.
-- [ ] Confirmar licença, atribuição e forma de distribuir os artefatos do engine
-  escolhido.
+- [x] Revisar licença e obrigações de atribuição do engine escolhido.
+- [ ] Definir e validar a cópia dos artefatos e avisos do engine no build.
 - [ ] Definir integração do engine escolhido com Vite e hosting próprio.
 - [ ] Definir e disponibilizar o asset do Image Target.
 - [ ] Registrar dimensões físicas e qualidade do target.
 - [ ] Definir orientação inicial da experiência.
 - [ ] Definir matriz mínima de aparelhos, OS e navegadores.
 - [ ] Definir budgets provisórios de FPS, tempo de carregamento e memória.
-- [ ] Criar scaffold mínimo do frontend.
-- [ ] Configurar TypeScript estrito, lint, formatação e testes.
-- [ ] Registrar comandos canônicos de desenvolvimento e validação.
+- [x] Criar scaffold mínimo do frontend em `client/`.
+- [x] Configurar TypeScript estrito, lint, formatação e testes.
+- [x] Registrar comandos canônicos de desenvolvimento e validação.
+- [ ] Confirmar compatibilidade da licença do engine com eventual modelo de
+  monetização antes da produção.
 
 ### Gate de saída da fase 0
 
@@ -142,21 +143,19 @@ gameplay e rede.
 
 ## Decisões abertas
 
-1. Distribuição do 8th Wall: framework open source sem SLAM ou engine binário
-   distribuído com SLAM.
-2. Integração da distribuição escolhida com Vite e ambiente próprio de hosting.
-3. Asset, dimensões e condições físicas do Image Target.
-4. Orientação da experiência e layout dos controles.
-5. Aparelhos, versões mínimas de OS e browsers suportados.
-6. Critérios numéricos para tracking, FPS, carregamento e sessão térmica.
-7. Gerenciador de pacotes, Node.js e ferramentas de teste.
-8. Estratégia de calibração para campo maior que o target.
-9. Necessidade real de World Tracking/SLAM após medições da fase 1 e conforme a
+1. Integração do engine binário com Vite e ambiente próprio de hosting.
+2. Asset, dimensões e condições físicas do Image Target.
+3. Orientação da experiência e layout dos controles.
+4. Aparelhos, versões mínimas de OS e browsers suportados.
+5. Critérios numéricos para tracking, FPS, carregamento e sessão térmica.
+6. Estratégia de calibração para campo maior que o target.
+7. Necessidade real de World Tracking/SLAM após medições da fase 1 e conforme a
    distribuição disponível.
-10. Socket.IO ou WebSocket puro na fase 3.
-11. Fluxo de sala, identidade, reconnect e eventual autenticação.
-12. Hospedagem do frontend e do servidor.
-13. Identidade visual e referências de UI.
+8. Socket.IO ou WebSocket puro na fase 3.
+9. Fluxo de sala, identidade, reconnect e eventual autenticação.
+10. Hospedagem do frontend e do servidor.
+11. Identidade visual e referências de UI.
+12. Compatibilidade do modelo de monetização com a licença do engine binário.
 
 ## Regra de manutenção
 

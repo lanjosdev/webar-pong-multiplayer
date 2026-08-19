@@ -1,6 +1,6 @@
 # Referência oficial — TypeScript
 
-Última verificação: 2026-08-19. Versão do projeto: **TBD**.
+Última verificação: 2026-08-19. Versão do projeto: `6.0.3`.
 
 ## Fontes oficiais
 

@@ -34,10 +34,9 @@ Em 2026-08-19 foi confirmado nas fontes oficiais que a plataforma hospedada do
 decisão do produto de usar 8th Wall para Image Targets, mas impede depender do
 editor, hosting ou credenciais do produto legado.
 
-A distribuição atual do engine ainda é **TBD**: framework open source com Image
-Targets e sem SLAM, ou engine binário distribuído com Image Targets e SLAM. A
-escolha precisa considerar integração com Vite, licença e evolução futura antes
-do scaffold WebAR. Consulte `docs/references/8th-wall.md`.
+A distribuição escolhida é o engine binário distribuído, com Image Targets e
+SLAM, conforme o ADR-0001. A integração do runtime com Vite ainda está pendente.
+Consulte `docs/references/8th-wall.md`.
 
 ## Escopo funcional inicial do jogo local
 
@@ -103,4 +102,4 @@ avaliados após medições reais de latência e instabilidade.
 - Critérios quantitativos de sucesso.
 - Aparelhos e versões mínimas suportados.
 - Estratégia de distribuição do Image Target.
-- Distribuição e licença do engine 8th Wall utilizada pelo projeto.
+- Compatibilidade entre eventual monetização e a licença do engine 8th Wall.

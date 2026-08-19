@@ -1,6 +1,6 @@
 # Referência oficial — 8th Wall
 
-Última verificação: 2026-08-19.
+Última verificação: 2026-08-19. Distribuição do projeto: engine binário `1.0.0`.
 
 ## Estado relevante da plataforma
 
@@ -9,17 +9,18 @@ Experiências já publicadas no hosting legado permanecem disponíveis somente a
 28 de fevereiro de 2027. Portanto, este projeto novo não deve depender do editor,
 hosting, credenciais ou fluxo de publicação da antiga plataforma hospedada.
 
-O projeto mantém a decisão de usar 8th Wall para Image Targets, mas precisa
-escolher e registrar por ADR uma das distribuições atuais:
+O projeto mantém a decisão de usar 8th Wall para Image Targets. As distribuições
+atuais consideradas foram:
 
 1. **Engine Framework open source**: código sob licença MIT, com Image Targets,
    mas sem SLAM.
 2. **Engine distribuído como binário**: pacote separado, com Image Targets e
    SLAM, sujeito à licença e ao modelo de distribuição do binário.
 
-Essa escolha afeta a integração com Vite, os assets publicados, licenciamento e
-a possibilidade futura de World Tracking/SLAM. Não suponha que APIs ou exemplos
-do produto hospedado legado funcionem na distribuição escolhida.
+O ADR-0001 escolheu o engine binário distribuído na versão `1.0.0`. A escolha
+preserva SLAM futuro, mas traz restrições de licença e atribuição. A integração
+com Vite permanece pendente. Não suponha que APIs ou exemplos do produto
+hospedado legado funcionem nessa distribuição.
 
 ## Fontes oficiais
 
@@ -46,7 +47,7 @@ do produto hospedado legado funcionem na distribuição escolhida.
 
 ## Regras específicas do projeto
 
-- Trate a distribuição exata e a versão do engine como **TBD** até o ADR.
+- Use `@8thwall/engine-binary@1.0.0`; mudanças de distribuição exigem novo ADR.
 - Não trate credenciais da antiga plataforma como pré-requisito do scaffold.
 - Confirme licença e termos da distribuição selecionada antes de incorporar
   binários ao repositório ou ao build.

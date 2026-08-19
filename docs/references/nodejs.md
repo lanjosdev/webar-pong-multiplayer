@@ -1,6 +1,7 @@
 # Referência oficial — Node.js
 
-Última verificação: 2026-08-19. Uso e versão: **adiados até a fase 3**.
+Última verificação: 2026-08-19. Toolchain do cliente: `24.19.0`.
+Runtime do backend: **adiado até a fase 3**.
 
 ## Fontes oficiais
 

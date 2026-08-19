@@ -8,19 +8,19 @@ simulação desktop não substitui evidência mobile WebAR.
 
 ## Comandos canônicos
 
-Status: TBD até a criação do scaffold.
+Execute a partir da raiz do repositório:
 
-O projeto deverá expor, no mínimo, comandos equivalentes a:
+- desenvolvimento: `npm --prefix client run dev`;
+- build: `npm --prefix client run build`;
+- typecheck: `npm --prefix client run typecheck`;
+- lint: `npm --prefix client run lint`;
+- testes unitários: `npm --prefix client run test`;
+- modo watch: `npm --prefix client run test:watch`;
+- formatação: `npm --prefix client run format:check`;
+- validação completa: `npm --prefix client run check`.
 
-- desenvolvimento;
-- build de produção;
-- typecheck;
-- lint;
-- testes unitários;
-- testes de integração;
-- validação completa.
-
-Quando definidos, registrar os comandos exatos aqui e em `AGENTS.md`.
+O teste inicial valida montagem, conteúdo acessível e teardown idempotente do
+shell. Testes de integração WebAR entram com o adaptador do engine.
 
 ## Pirâmide por fase
 
@@ -83,4 +83,3 @@ Antes de validar a fase 1, definir:
 
 Não escolher esses números apenas por conveniência técnica; relacioná-los à
 experiência do usuário e à matriz real de aparelhos.
-

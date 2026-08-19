@@ -35,6 +35,14 @@ Interprete os marcadores documentais assim:
 Não transforme uma hipótese em decisão silenciosamente. Quando uma pendência
 bloquear uma escolha de alto impacto, apresente opções e trade-offs.
 
+## Estrutura de aplicações
+
+- O frontend reside em `client/` e possui `package.json` e lockfile próprios.
+- O backend futuro residirá em `server/` e terá dependências e package próprios.
+- Não crie `package.json` ou workspace npm na raiz sem uma nova decisão.
+- Contratos compartilhados só devem virar um pacote separado quando a fase
+  multiplayer demonstrar essa necessidade.
+
 ## Documentação de tecnologias
 
 - Antes de usar uma API, confirme a versão efetivamente instalada em
@@ -47,8 +55,9 @@ bloquear uma escolha de alto impacto, apresente opções e trade-offs.
   documentos afetados e crie um ADR quando apropriado.
 - Node.js e Socket.IO são referências adiadas até a fase 3; não são autorização
   para antecipar o backend.
-- Para 8th Wall, não suponha fluxos da plataforma hospedada legada. Confirme a
-  distribuição do engine, licença e integração com Vite antes do scaffold AR.
+- Para 8th Wall, não suponha fluxos da plataforma hospedada legada. Siga o
+  ADR-0001 e confirme licença, atribuição e integração com Vite antes de copiar
+  ou carregar os binários.
 
 ## Gate obrigatório de fases
 
@@ -134,8 +143,15 @@ permitido; implementar a rede antecipadamente não é.
 
 ## Validação e conclusão
 
-Os comandos do projeto ainda são TBD. Quando o scaffold for criado, registre
-os comandos canônicos aqui e em `docs/testing.md`.
+Execute os comandos do frontend a partir da raiz:
+
+- instalar: `npm --prefix client ci`;
+- desenvolver: `npm --prefix client run dev`;
+- build: `npm --prefix client run build`;
+- tipos: `npm --prefix client run typecheck`;
+- lint: `npm --prefix client run lint`;
+- testes: `npm --prefix client run test`;
+- validação completa: `npm --prefix client run check`.
 
 Antes de concluir uma alteração:
 

@@ -20,5 +20,4 @@ Copie `template.md`, substitua os campos e adicione o ADR ao índice abaixo.
 
 ## Índice
 
-Nenhum ADR registrado até o momento.
-
+- [ADR-0001 — Distribuição do engine 8th Wall](0001-8th-wall-engine-distribution.md)

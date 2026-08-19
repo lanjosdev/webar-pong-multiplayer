@@ -6,9 +6,29 @@ jogo local e, somente depois, multiplayer autoritativo.
 
 ## Estado atual
 
-O projeto está na fase de fundação e planejamento. Ainda não há scaffold nem
-implementação da aplicação. Consulte [PROJECT_PLAN.md](PROJECT_PLAN.md) para o
+O projeto está na fase de fundação. O cliente Vite + TypeScript já existe em
+`client/`, com qualidade automatizada e shell mínimo; câmera, tracking e cena 3D
+ainda não foram integrados. Consulte [PROJECT_PLAN.md](PROJECT_PLAN.md) para o
 progresso e os critérios de saída de cada etapa.
+
+## Desenvolvimento do cliente
+
+Pré-requisitos: Node.js 24.19.0 e npm 11.6.0.
+
+```bash
+npm --prefix client ci
+npm --prefix client run dev
+```
+
+Validação completa:
+
+```bash
+npm --prefix client run check
+```
+
+O frontend possui package e lockfile próprios em `client/`. O backend futuro
+será criado em `server/` com package independente; a raiz não é um workspace
+npm.
 
 ## Documentação
 

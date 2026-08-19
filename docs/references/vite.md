@@ -1,6 +1,6 @@
 # Referência oficial — Vite
 
-Última verificação: 2026-08-19. Versão do projeto: **TBD**.
+Última verificação: 2026-08-19. Versão do projeto: `8.2.1`.
 
 ## Fontes oficiais
 

@@ -10,11 +10,9 @@ versão utilizadas serem confirmadas.
 
 A plataforma hospedada do 8th Wall foi encerrada em 28 de fevereiro de 2026.
 Este projeto deve hospedar sua aplicação e usar uma distribuição atual do
-engine. Antes do scaffold AR, um ADR deve escolher entre:
-
-- Engine Framework open source, com Image Targets e sem SLAM;
-- engine binário distribuído, com Image Targets e SLAM, sujeito à licença da
-  distribuição.
+engine. O ADR-0001 escolheu `@8thwall/engine-binary@1.0.0`, com Image Targets e
+SLAM, sujeito à licença da distribuição. O pacote está instalado, mas o runtime
+ainda não é carregado nem copiado para o build.
 
 Não use como referência de implementação APIs, credenciais ou fluxo de deploy
 exclusivos da plataforma hospedada legada. Consulte
@@ -83,7 +81,7 @@ Para cada aparelho selecionado, registrar:
 - Comportamento visual ao perder o target: congelar, ocultar, suavizar ou orientar
   o usuário.
 - Orientação de tela.
-- Distribuição, versão, licença e integração exata do 8th Wall com Vite.
+- Integração exata do engine binário 8th Wall com Vite.
 - Forma de copiar e servir os artefatos do engine no hosting próprio.
 - Condições que justificariam combinar Image Tracking e SLAM.
 

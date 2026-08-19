@@ -1,6 +1,6 @@
 # Referência oficial — Three.js
 
-Última verificação: 2026-08-19. Versão do projeto: **TBD**.
+Última verificação: 2026-08-19. Versão do projeto: `0.185.1`.
 
 ## Fontes oficiais
 
