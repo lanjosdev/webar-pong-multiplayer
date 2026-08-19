@@ -6,6 +6,20 @@ Validar o 8th Wall com um Image Target antes de implementar o Pong. Este
 documento não fixa APIs ou nomes de eventos do SDK até a forma de integração e
 versão utilizadas serem confirmadas.
 
+## Restrição de plataforma e distribuição
+
+A plataforma hospedada do 8th Wall foi encerrada em 28 de fevereiro de 2026.
+Este projeto deve hospedar sua aplicação e usar uma distribuição atual do
+engine. Antes do scaffold AR, um ADR deve escolher entre:
+
+- Engine Framework open source, com Image Targets e sem SLAM;
+- engine binário distribuído, com Image Targets e SLAM, sujeito à licença da
+  distribuição.
+
+Não use como referência de implementação APIs, credenciais ou fluxo de deploy
+exclusivos da plataforma hospedada legada. Consulte
+`docs/references/8th-wall.md` antes de trabalhar nesta integração.
+
 ## Decisões confirmadas
 
 - O target físico define origem, orientação e escala da experiência.
@@ -69,7 +83,8 @@ Para cada aparelho selecionado, registrar:
 - Comportamento visual ao perder o target: congelar, ocultar, suavizar ou orientar
   o usuário.
 - Orientação de tela.
-- Integração exata do 8th Wall e ambiente de hosting.
+- Distribuição, versão, licença e integração exata do 8th Wall com Vite.
+- Forma de copiar e servir os artefatos do engine no hosting próprio.
 - Condições que justificariam combinar Image Tracking e SLAM.
 
 ## Gate antes de adicionar SLAM
@@ -78,6 +93,6 @@ World Tracking/SLAM só deve ser proposto após:
 
 1. medir o comportamento do Image Tracking isolado;
 2. reproduzir uma limitação relevante ao produto;
-3. comparar complexidade, estabilidade, performance e UX;
-4. registrar a decisão em ADR.
-
+3. confirmar que a distribuição escolhida suporta SLAM e avaliar sua licença;
+4. comparar complexidade, estabilidade, performance e UX;
+5. registrar a decisão em ADR.

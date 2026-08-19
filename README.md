@@ -19,6 +19,7 @@ progresso e os critérios de saída de cada etapa.
 - [Padrões de engenharia](docs/engineering-standards.md)
 - [Estratégia de testes](docs/testing.md)
 - [Protocolo multiplayer futuro](docs/realtime-protocol.md)
+- [Catálogo de referências oficiais](docs/references/README.md)
 - [Registros de decisões arquiteturais](docs/adr/README.md)
 
 ## Sequência obrigatória
@@ -29,4 +30,3 @@ progresso e os critérios de saída de cada etapa.
 
 Decisões pendentes são registradas como `TBD`; não devem ser inferidas como
 requisitos confirmados.
-

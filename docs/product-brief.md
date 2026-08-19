@@ -27,6 +27,18 @@ como referência de posição, orientação e escala, não como limite visual do
 - Multiplayer futuro com Node.js, TypeScript e servidor autoritativo.
 - Socket.IO ou WebSocket puro ainda precisa ser decidido.
 
+## Restrição externa descoberta após o briefing
+
+Em 2026-08-19 foi confirmado nas fontes oficiais que a plataforma hospedada do
+8th Wall havia sido encerrada em 28 de fevereiro de 2026. Isso não altera a
+decisão do produto de usar 8th Wall para Image Targets, mas impede depender do
+editor, hosting ou credenciais do produto legado.
+
+A distribuição atual do engine ainda é **TBD**: framework open source com Image
+Targets e sem SLAM, ou engine binário distribuído com Image Targets e SLAM. A
+escolha precisa considerar integração com Vite, licença e evolução futura antes
+do scaffold WebAR. Consulte `docs/references/8th-wall.md`.
+
 ## Escopo funcional inicial do jogo local
 
 - Campo/tabuleiro 3D.
@@ -91,4 +103,4 @@ avaliados após medições reais de latência e instabilidade.
 - Critérios quantitativos de sucesso.
 - Aparelhos e versões mínimas suportados.
 - Estratégia de distribuição do Image Target.
-
+- Distribuição e licença do engine 8th Wall utilizada pelo projeto.

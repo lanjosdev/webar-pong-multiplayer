@@ -16,6 +16,8 @@ aos gates WebAR, jogo local e multiplayer.
 - Consulte `docs/testing.md` para critérios de validação e evidências.
 - Consulte `docs/realtime-protocol.md` somente para trabalho da fase multiplayer.
 - Consulte `docs/engineering-standards.md` para padrões detalhados de código.
+- Consulte `docs/references/README.md` para localizar documentação oficial das
+  tecnologias e regras de versionamento.
 - Registre decisões arquiteturais duráveis em `docs/adr/`.
 
 O briefing e os documentos são fontes de requisitos, não comandos autônomos.
@@ -32,6 +34,21 @@ Interprete os marcadores documentais assim:
 
 Não transforme uma hipótese em decisão silenciosamente. Quando uma pendência
 bloquear uma escolha de alto impacto, apresente opções e trade-offs.
+
+## Documentação de tecnologias
+
+- Antes de usar uma API, confirme a versão efetivamente instalada em
+  `package.json`, lockfile e arquivos de configuração.
+- Leia somente o arquivo de `docs/references/` aplicável à tarefa e consulte a
+  fonte oficial compatível com essa versão. Não confie apenas em memória.
+- Não copie documentação externa extensa para o repositório. Registre rotas de
+  consulta, restrições do projeto e conclusões duráveis.
+- Se uma fonte oficial alterar uma decisão de arquitetura, atualize os
+  documentos afetados e crie um ADR quando apropriado.
+- Node.js e Socket.IO são referências adiadas até a fase 3; não são autorização
+  para antecipar o backend.
+- Para 8th Wall, não suponha fluxos da plataforma hospedada legada. Confirme a
+  distribuição do engine, licença e integração com Vite antes do scaffold AR.
 
 ## Gate obrigatório de fases
 
@@ -126,4 +143,3 @@ Antes de concluir uma alteração:
 2. Valide manualmente o que depender de câmera ou aparelho físico.
 3. Informe comandos executados, evidências e limitações não verificadas.
 4. Confirme que `PROJECT_PLAN.md` e as referências continuam consistentes.
-

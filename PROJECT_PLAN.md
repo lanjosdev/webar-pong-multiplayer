@@ -15,8 +15,17 @@ arquitetura e validação permanecem nos documentos especializados em `docs/`.
 ## Estado atual
 
 - Fase ativa: **Fase 0 — Fundação e decisões iniciais**.
-- Próximo gate: scaffold mínimo do frontend e acesso funcional ao 8th Wall.
+- Próximo gate: decidir a distribuição do engine 8th Wall e criar o scaffold
+  mínimo do frontend.
 - Implementação multiplayer: **adiada até a aprovação das fases 1 e 2**.
+
+### Restrição externa confirmada
+
+A plataforma hospedada do 8th Wall foi encerrada em 28 de fevereiro de 2026.
+Este projeto novo deve integrar e hospedar uma distribuição atual do engine;
+não pode depender do editor, hosting ou credenciais da plataforma legada. A
+escolha entre o framework open source, sem SLAM, e o engine binário distribuído,
+com SLAM, continua pendente e deve ser registrada por ADR.
 
 ## Direção do produto
 
@@ -33,9 +42,13 @@ gameplay e rede.
 - [x] Documentar plano de validação WebAR e testes.
 - [x] Documentar diretrizes iniciais de UX/UI.
 - [x] Reservar a arquitetura multiplayer sem implementá-la.
+- [x] Catalogar fontes oficiais das tecnologias em `docs/references/`.
 - [ ] Definir gerenciador de pacotes e versão mínima do Node.js.
-- [ ] Confirmar modelo de integração/hosting do 8th Wall.
-- [ ] Obter credenciais e acesso de desenvolvimento do 8th Wall.
+- [ ] Escolher por ADR: framework open source do 8th Wall ou engine binário
+  distribuído.
+- [ ] Confirmar licença, atribuição e forma de distribuir os artefatos do engine
+  escolhido.
+- [ ] Definir integração do engine escolhido com Vite e hosting próprio.
 - [ ] Definir e disponibilizar o asset do Image Target.
 - [ ] Registrar dimensões físicas e qualidade do target.
 - [ ] Definir orientação inicial da experiência.
@@ -47,7 +60,9 @@ gameplay e rede.
 
 ### Gate de saída da fase 0
 
-- Aplicação mínima pode ser executada em ambiente compatível com 8th Wall.
+- Distribuição, licença e integração do engine 8th Wall estão documentadas.
+- Aplicação mínima pode ser executada em ambiente próprio compatível com o
+  engine escolhido.
 - Asset e dimensões do target são conhecidos.
 - Pelo menos um Android e um iPhone de teste estão definidos.
 - Comandos de instalação, desenvolvimento, build e validação estão registrados.
@@ -127,18 +142,21 @@ gameplay e rede.
 
 ## Decisões abertas
 
-1. Integração exata do 8th Wall com Vite e ambiente de hosting.
-2. Asset, dimensões e condições físicas do Image Target.
-3. Orientação da experiência e layout dos controles.
-4. Aparelhos, versões mínimas de OS e browsers suportados.
-5. Critérios numéricos para tracking, FPS, carregamento e sessão térmica.
-6. Gerenciador de pacotes, Node.js e ferramentas de teste.
-7. Estratégia de calibração para campo maior que o target.
-8. Necessidade real de World Tracking/SLAM após medições da fase 1.
-9. Socket.IO ou WebSocket puro na fase 3.
-10. Fluxo de sala, identidade, reconnect e eventual autenticação.
-11. Hospedagem do frontend e do servidor.
-12. Identidade visual e referências de UI.
+1. Distribuição do 8th Wall: framework open source sem SLAM ou engine binário
+   distribuído com SLAM.
+2. Integração da distribuição escolhida com Vite e ambiente próprio de hosting.
+3. Asset, dimensões e condições físicas do Image Target.
+4. Orientação da experiência e layout dos controles.
+5. Aparelhos, versões mínimas de OS e browsers suportados.
+6. Critérios numéricos para tracking, FPS, carregamento e sessão térmica.
+7. Gerenciador de pacotes, Node.js e ferramentas de teste.
+8. Estratégia de calibração para campo maior que o target.
+9. Necessidade real de World Tracking/SLAM após medições da fase 1 e conforme a
+   distribuição disponível.
+10. Socket.IO ou WebSocket puro na fase 3.
+11. Fluxo de sala, identidade, reconnect e eventual autenticação.
+12. Hospedagem do frontend e do servidor.
+13. Identidade visual e referências de UI.
 
 ## Regra de manutenção
 
@@ -148,4 +166,3 @@ gameplay e rede.
   mantenha apenas o estado executivo.
 - Se o projeto adotar um issue tracker, ele passa a controlar tarefas diárias;
   este arquivo continua responsável por fases, gates e direção geral.
-
