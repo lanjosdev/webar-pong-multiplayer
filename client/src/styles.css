@@ -126,22 +126,13 @@ h1 {
 }
 
 .primary-action:focus-visible,
-.stop-action:focus-visible,
-.legal-link:focus-visible {
+.stop-action:focus-visible {
   outline: 0.2rem solid #fff;
   outline-offset: 0.2rem;
 }
 
 .primary-action:active {
   transform: translateY(1px);
-}
-
-.legal-link {
-  display: inline-block;
-  margin-top: 1.25rem;
-  color: #9eabc0;
-  font-size: 0.8125rem;
-  text-underline-offset: 0.2em;
 }
 
 .camera-hud {
@@ -199,10 +190,6 @@ h1 {
 
   .primary-action {
     margin-top: 1rem;
-  }
-
-  .legal-link {
-    margin-top: 0.75rem;
   }
 }
 

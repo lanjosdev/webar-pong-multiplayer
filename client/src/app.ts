@@ -124,13 +124,6 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
   primaryAction.className = 'primary-action'
   primaryAction.type = 'button'
 
-  const legalLink = document.createElement('a')
-  legalLink.className = 'legal-link'
-  legalLink.href = `${import.meta.env.BASE_URL}external/xr/LICENSE`
-  legalLink.target = '_blank'
-  legalLink.rel = 'noreferrer'
-  legalLink.textContent = 'Licença e avisos do XR Engine'
-
   const cameraHud = document.createElement('div')
   cameraHud.className = 'camera-hud'
   cameraHud.hidden = true
@@ -145,7 +138,7 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
   stopAction.type = 'button'
   stopAction.textContent = 'Encerrar'
 
-  panel.append(eyebrow, title, status, primaryAction, legalLink)
+  panel.append(eyebrow, title, status, primaryAction)
   cameraHud.append(cameraStatus, stopAction)
   overlay.append(panel, cameraHud)
   shell.append(canvas, overlay)

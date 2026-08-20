@@ -69,6 +69,7 @@ describe('mountApp', () => {
     expect(root.querySelector<HTMLButtonElement>('.primary-action')?.textContent).toBe(
       'Iniciar experiência',
     )
+    expect(root.querySelector('.legal-link')).toBeNull()
 
     root.querySelector<HTMLButtonElement>('.primary-action')?.click()
 
