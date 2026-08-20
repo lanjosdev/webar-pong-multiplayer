@@ -1,10 +1,109 @@
+import { createDefaultArRuntime, type ArRuntime, type ArRuntimeState } from './ar'
+
 export interface AppHandle {
   dispose(): void
 }
 
-export function mountApp(root: HTMLElement): AppHandle {
+export interface MountAppOptions {
+  runtime?: ArRuntime
+}
+
+interface StateContent {
+  action?: 'retry' | 'start'
+  actionLabel?: string
+  description: string
+  eyebrow: string
+  title: string
+}
+
+function contentForState(state: ArRuntimeState): StateContent {
+  switch (state.status) {
+    case 'booting':
+      return {
+        eyebrow: 'Preparando WebAR',
+        title: 'Carregando a experiência',
+        description: 'Estamos preparando os recursos necessários para acessar a câmera.',
+      }
+    case 'camera-permission':
+      return {
+        eyebrow: 'Câmera necessária',
+        title: 'Veja a experiência no seu ambiente',
+        description:
+          'Ao continuar, o navegador pedirá acesso à câmera traseira. Nenhuma imagem é enviada pela rede.',
+        action: 'start',
+        actionLabel: 'Iniciar experiência',
+      }
+    case 'requesting-camera':
+      return {
+        eyebrow: 'Permissão de câmera',
+        title: 'Abrindo a câmera',
+        description: 'Autorize o acesso no aviso do navegador para continuar.',
+      }
+    case 'camera-active':
+      return {
+        eyebrow: 'WebAR ativa',
+        title: 'Câmera ativa',
+        description: 'Bootstrap WebAR em execução.',
+      }
+    case 'paused':
+      return {
+        eyebrow: 'Sessão pausada',
+        title: 'Câmera pausada',
+        description: 'A experiência será retomada quando esta página voltar ao primeiro plano.',
+      }
+    case 'recovering':
+      return {
+        eyebrow: 'Retomando',
+        title: 'Recuperando a câmera',
+        description: 'Aguarde enquanto a sessão WebAR é retomada.',
+      }
+    case 'camera-denied':
+      return {
+        eyebrow: 'Câmera bloqueada',
+        title: 'Não foi possível abrir a câmera',
+        description:
+          'Permita o acesso à câmera nas configurações do navegador e toque em tentar novamente.',
+        action: 'retry',
+        actionLabel: 'Tentar novamente',
+      }
+    case 'unsupported':
+      return {
+        eyebrow: 'WebAR indisponível',
+        title: 'Este navegador não é compatível',
+        description: state.message,
+      }
+    case 'fatal-error':
+      return {
+        eyebrow: 'Falha ao iniciar',
+        title: 'A experiência encontrou um erro',
+        description: state.message,
+        action: 'retry',
+        actionLabel: 'Tentar novamente',
+      }
+    case 'disposed':
+      return {
+        eyebrow: 'Sessão encerrada',
+        title: 'Experiência encerrada',
+        description: 'A câmera e os recursos da sessão foram liberados.',
+      }
+  }
+}
+
+function isCameraVisible(state: ArRuntimeState): boolean {
+  return ['requesting-camera', 'camera-active', 'paused', 'recovering'].includes(state.status)
+}
+
+export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppHandle {
+  const runtime = options.runtime ?? createDefaultArRuntime()
   const shell = document.createElement('main')
   shell.className = 'app-shell'
+
+  const canvas = document.createElement('canvas')
+  canvas.className = 'camera-feed'
+  canvas.setAttribute('aria-hidden', 'true')
+
+  const overlay = document.createElement('div')
+  overlay.className = 'experience-overlay'
 
   const panel = document.createElement('section')
   panel.className = 'status-panel'
@@ -12,22 +111,81 @@ export function mountApp(root: HTMLElement): AppHandle {
 
   const eyebrow = document.createElement('p')
   eyebrow.className = 'eyebrow'
-  eyebrow.textContent = 'Experiência WebAR mobile'
 
   const title = document.createElement('h1')
   title.id = 'app-title'
-  title.textContent = 'WebAR Pong 3D'
 
   const status = document.createElement('p')
   status.className = 'status'
   status.setAttribute('role', 'status')
-  status.textContent = 'Fundação pronta. A integração WebAR será a próxima etapa.'
+  status.setAttribute('aria-live', 'polite')
 
-  panel.append(eyebrow, title, status)
-  shell.append(panel)
+  const primaryAction = document.createElement('button')
+  primaryAction.className = 'primary-action'
+  primaryAction.type = 'button'
+
+  const legalLink = document.createElement('a')
+  legalLink.className = 'legal-link'
+  legalLink.href = `${import.meta.env.BASE_URL}external/xr/LICENSE`
+  legalLink.target = '_blank'
+  legalLink.rel = 'noreferrer'
+  legalLink.textContent = 'Licença e avisos do XR Engine'
+
+  const cameraHud = document.createElement('div')
+  cameraHud.className = 'camera-hud'
+  cameraHud.hidden = true
+
+  const cameraStatus = document.createElement('p')
+  cameraStatus.className = 'camera-status'
+  cameraStatus.setAttribute('role', 'status')
+  cameraStatus.setAttribute('aria-live', 'polite')
+
+  const stopAction = document.createElement('button')
+  stopAction.className = 'stop-action'
+  stopAction.type = 'button'
+  stopAction.textContent = 'Encerrar'
+
+  panel.append(eyebrow, title, status, primaryAction, legalLink)
+  cameraHud.append(cameraStatus, stopAction)
+  overlay.append(panel, cameraHud)
+  shell.append(canvas, overlay)
   root.replaceChildren(shell)
 
   let disposed = false
+
+  const render = (nextState: ArRuntimeState) => {
+    const content = contentForState(nextState)
+    const cameraVisible = isCameraVisible(nextState)
+    const cameraActive = nextState.status === 'camera-active'
+
+    shell.dataset['arState'] = nextState.status
+    canvas.hidden = !cameraVisible
+    panel.hidden = cameraVisible
+    cameraHud.hidden = !cameraVisible
+    cameraStatus.textContent = content.title
+    stopAction.hidden = !cameraActive
+
+    eyebrow.textContent = content.eyebrow
+    title.textContent = content.title
+    status.textContent = content.description
+    primaryAction.hidden = !content.action
+    primaryAction.textContent = content.actionLabel ?? ''
+    primaryAction.dataset['action'] = content.action ?? ''
+  }
+
+  const unsubscribe = runtime.subscribe(render)
+
+  const handlePrimaryAction = () => {
+    const action = primaryAction.dataset['action']
+    const operation = action === 'start' ? runtime.start(canvas) : runtime.retry()
+    void operation.catch(() => undefined)
+  }
+
+  const handleStop = () => runtime.stop()
+
+  primaryAction.addEventListener('click', handlePrimaryAction)
+  stopAction.addEventListener('click', handleStop)
+  void runtime.preload().catch(() => undefined)
 
   return {
     dispose() {
@@ -35,6 +193,10 @@ export function mountApp(root: HTMLElement): AppHandle {
         return
       }
 
+      primaryAction.removeEventListener('click', handlePrimaryAction)
+      stopAction.removeEventListener('click', handleStop)
+      unsubscribe()
+      runtime.dispose()
       shell.remove()
       disposed = true
     },

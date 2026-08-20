@@ -43,6 +43,10 @@ Cada cliente mantém localmente: câmera, tracking AR, pose e renderização.
 - **Networking futuro**: transporte e tradução entre contratos de rede e
   comandos/snapshots do jogo.
 
+No bootstrap atual, `client/src/ar/` contém o loader, o contrato mínimo validado
+do SDK e o runtime de câmera. A UI consome apenas estados discriminados e
+intenções de lifecycle; o objeto global `XR8` não atravessa essa fronteira.
+
 ## Estrutura física
 
 - `client/`: frontend Vite, com `package.json` e lockfile próprios.

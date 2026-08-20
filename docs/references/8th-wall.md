@@ -19,8 +19,10 @@ atuais consideradas foram:
 
 O ADR-0001 escolheu o engine binário distribuído na versão `1.0.0`. A escolha
 preserva SLAM futuro, mas traz restrições de licença e atribuição. A integração
-com Vite permanece pendente. Não suponha que APIs ou exemplos do produto
-hospedado legado funcionem nessa distribuição.
+com Vite copia e verifica a árvore `dist` original, carrega `xr.js` localmente e
+pré-carrega apenas o chunk `slam`; o bootstrap mantém World Tracking desativado.
+Não suponha que APIs ou exemplos do produto hospedado legado funcionem nessa
+distribuição.
 
 ## Fontes oficiais
 

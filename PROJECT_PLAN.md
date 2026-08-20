@@ -15,8 +15,13 @@ arquitetura e validação permanecem nos documentos especializados em `docs/`.
 ## Estado atual
 
 - Fase ativa: **Fase 0 — Fundação e decisões iniciais**.
-- Próximo gate: integrar o engine 8th Wall ao Vite e validar um Image Target.
+- Próximo gate: validar o bootstrap WebAR em Android e iPhone, disponibilizar o
+  Image Target e então validar seu tracking.
 - Implementação multiplayer: **adiada até a aprovação das fases 1 e 2**.
+
+O engine binário já é copiado e verificado no build, e o bootstrap inicializa
+câmera e `XrController` com World Tracking desativado. Essa integração ainda
+não possui evidência em aparelho real e não aprova o gate WebAR.
 
 ### Restrição externa confirmada
 
@@ -46,11 +51,11 @@ gameplay e rede.
 - [x] Escolher por ADR: framework open source do 8th Wall ou engine binário
   distribuído.
 - [x] Revisar licença e obrigações de atribuição do engine escolhido.
-- [ ] Definir e validar a cópia dos artefatos e avisos do engine no build.
-- [ ] Definir integração do engine escolhido com Vite e hosting próprio.
+- [x] Definir e validar a cópia dos artefatos e avisos do engine no build.
+- [x] Definir integração do engine escolhido com Vite e hosting próprio.
 - [ ] Definir e disponibilizar o asset do Image Target.
 - [ ] Registrar dimensões físicas e qualidade do target.
-- [ ] Definir orientação inicial da experiência.
+- [x] Suportar portrait e landscape com layout responsivo, sem bloquear rotação.
 - [ ] Definir matriz mínima de aparelhos, OS e navegadores.
 - [ ] Definir budgets provisórios de FPS, tempo de carregamento e memória.
 - [x] Criar scaffold mínimo do frontend em `client/`.
@@ -143,9 +148,9 @@ gameplay e rede.
 
 ## Decisões abertas
 
-1. Integração do engine binário com Vite e ambiente próprio de hosting.
+1. Evidência mobile do bootstrap WebAR e da retomada de lifecycle.
 2. Asset, dimensões e condições físicas do Image Target.
-3. Orientação da experiência e layout dos controles.
+3. Layout e gesto dos controles touch.
 4. Aparelhos, versões mínimas de OS e browsers suportados.
 5. Critérios numéricos para tracking, FPS, carregamento e sessão térmica.
 6. Estratégia de calibração para campo maior que o target.

@@ -11,8 +11,14 @@ versão utilizadas serem confirmadas.
 A plataforma hospedada do 8th Wall foi encerrada em 28 de fevereiro de 2026.
 Este projeto deve hospedar sua aplicação e usar uma distribuição atual do
 engine. O ADR-0001 escolheu `@8thwall/engine-binary@1.0.0`, com Image Targets e
-SLAM, sujeito à licença da distribuição. O pacote está instalado, mas o runtime
-ainda não é carregado nem copiado para o build.
+SLAM, sujeito à licença da distribuição. Antes de desenvolvimento e build, os
+artefatos originais são copiados para `public/external/xr`; após o build, o
+inventário e os hashes SHA-256 são comparados byte a byte com o pacote instalado.
+
+O bootstrap carrega `xr.js` pelo `BASE_URL` do Vite e pré-carrega o chunk
+`slam`. A pipeline atual contém somente `GlTextureRenderer`, `XrController` e
+um módulo próprio de lifecycle. `disableWorldTracking: true` é configurado antes
+de criar a pipeline e executar o engine. Não há Image Target nem cena Three.js.
 
 Não use como referência de implementação APIs, credenciais ou fluxo de deploy
 exclusivos da plataforma hospedada legada. Consulte
@@ -24,6 +30,9 @@ exclusivos da plataforma hospedada legada. Consulte
 - O campo poderá ultrapassar os limites físicos do target.
 - Android e iOS são plataformas prioritárias.
 - World Tracking/SLAM é uma opção futura, não parte da primeira implementação.
+- Portrait e landscape são suportados responsivamente; a rotação não é
+  bloqueada.
+- A câmera só é solicitada após o usuário tocar em `Iniciar experiência`.
 
 ## Estados mínimos do runtime
 
@@ -40,12 +49,20 @@ exclusivos da plataforma hospedada legada. Consulte
 Os nomes são conceituais; a implementação pode usar outro modelo desde que
 cubra os mesmos estados observáveis.
 
+No bootstrap atual, `camera-permission`, `camera-denied`, `unsupported`,
+`recovering` e `fatal-error` já possuem representação observável. Estados de
+target permanecem reservados para a entrega de Image Tracking.
+
 ## Separação de responsabilidades
 
 - O adaptador 8th Wall converte dados do SDK para uma pose interna conhecida.
 - A raiz AR posiciona o conteúdo Three.js.
 - O game core não recebe ruído de tracking nem depende do target.
 - UI reage aos estados do runtime, sem acessar detalhes internos do SDK.
+
+O SDK global é tratado como `unknown` e validado no loader. A UI recebe somente
+uma união discriminada de estados e intenções de iniciar, tentar novamente e
+encerrar. Tipos e chamadas do `XR8` ficam confinados em `client/src/ar/`.
 
 ## Casos obrigatórios de lifecycle
 
@@ -56,6 +73,11 @@ cubra os mesmos estados observáveis.
 - Rotação ou resize do viewport conforme orientação suportada.
 - Interrupção de câmera ou erro do runtime.
 - Teardown e nova inicialização sem duplicar listeners ou loops.
+
+O bootstrap pausa o engine em `visibilitychange` ao ir para background, retoma
+ao voltar ao primeiro plano e usa `stop()` no encerramento. Resize,
+`orientationchange` e `visualViewport` atualizam o backing buffer do canvas; os
+listeners e módulos são removidos de forma idempotente.
 
 ## Matriz de validação do tracking
 
@@ -80,9 +102,6 @@ Para cada aparelho selecionado, registrar:
 - Tempo máximo aceitável de aquisição e reaquisição.
 - Comportamento visual ao perder o target: congelar, ocultar, suavizar ou orientar
   o usuário.
-- Orientação de tela.
-- Integração exata do engine binário 8th Wall com Vite.
-- Forma de copiar e servir os artefatos do engine no hosting próprio.
 - Condições que justificariam combinar Image Tracking e SLAM.
 
 ## Gate antes de adicionar SLAM

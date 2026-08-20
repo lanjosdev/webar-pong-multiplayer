@@ -6,10 +6,11 @@ jogo local e, somente depois, multiplayer autoritativo.
 
 ## Estado atual
 
-O projeto está na fase de fundação. O cliente Vite + TypeScript já existe em
-`client/`, com qualidade automatizada e shell mínimo; câmera, tracking e cena 3D
-ainda não foram integrados. Consulte [PROJECT_PLAN.md](PROJECT_PLAN.md) para o
-progresso e os critérios de saída de cada etapa.
+O projeto está na fase de fundação. O cliente Vite + TypeScript já carrega a
+distribuição própria do engine 8th Wall e possui um bootstrap de câmera com
+`XrController`; Image Target, tracking validado e cena 3D ainda não foram
+implementados. Consulte [PROJECT_PLAN.md](PROJECT_PLAN.md) para o progresso e os
+critérios de saída de cada etapa.
 
 ## Desenvolvimento do cliente
 
@@ -19,6 +20,19 @@ Pré-requisitos: Node.js 24.19.0 e npm 11.6.0.
 npm --prefix client ci
 npm --prefix client run dev
 ```
+
+O comando de desenvolvimento sincroniza automaticamente os artefatos originais
+do XR Engine em `client/public/external/xr/`. Para validar o build em um celular
+por HTTPS:
+
+```bash
+npm --prefix client run build
+npm --prefix client run preview -- --port 4173 --strictPort
+ngrok http --host-header=rewrite 4173
+```
+
+Abra a URL HTTPS fornecida pelo ngrok. Não versione tokens, configuração do
+ngrok nem a cópia gerada do engine.
 
 Validação completa:
 

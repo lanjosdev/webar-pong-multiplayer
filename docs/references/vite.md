@@ -25,6 +25,9 @@
   nelas.
 - A estratégia de assets do 8th Wall depende da distribuição do engine e deve
   ser validada no build final, não somente no dev server.
+- A integração atual copia a árvore `dist` do pacote para
+  `public/external/xr`, verifica hashes após o build e resolve `xr.js` com
+  `import.meta.env.BASE_URL`.
 - O acesso à câmera exige contexto seguro em aparelhos; o fluxo de teste precisa
   prever HTTPS ou ambiente equivalente compatível.
 - Não adicione plugins de Vite para resolver algo suportado pela configuração

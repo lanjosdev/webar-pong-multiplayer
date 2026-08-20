@@ -20,7 +20,24 @@ Execute a partir da raiz do repositório:
 - validação completa: `npm --prefix client run check`.
 
 O teste inicial valida montagem, conteúdo acessível e teardown idempotente do
-shell. Testes de integração WebAR entram com o adaptador do engine.
+shell. Os testes do bootstrap também validam loader, timeout, ordem da pipeline,
+permissão, erros, retry, pause/resume e teardown com um engine falso. O build
+compara inventário e conteúdo dos artefatos copiados com o pacote instalado.
+
+## Validação móvel do bootstrap
+
+Depois do build, execute em terminais separados:
+
+```text
+npm --prefix client run preview -- --port 4173 --strictPort
+ngrok http --host-header=rewrite 4173
+```
+
+Em Android/Chrome e iPhone/Safari, confirmar que não há prompt antes do toque,
+testar permissão concedida e negada, portrait e landscape, background/retomada,
+encerramento/reinício e respostas HTTP 200 para `xr.js`, `xr-slam.js` e
+`LICENSE`. Registrar os modelos e versões no relatório. Essa sessão valida o
+bootstrap, não Image Tracking.
 
 ## Pirâmide por fase
 

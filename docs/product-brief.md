@@ -20,6 +20,8 @@ como referência de posição, orientação e escala, não como limite visual do
 - HTML e CSS para interface.
 - Física simples própria, sem physics engine inicialmente.
 - Foco em navegadores mobile Android e iOS.
+- Layout responsivo em portrait e landscape, preservando a câmera como área
+  principal da experiência.
 - Evolução obrigatória por fases: WebAR, Pong local e multiplayer.
 - Multiplayer não faz parte das duas primeiras fases.
 - Cada aparelho executará seu próprio tracking; câmera e pose AR não trafegam
@@ -94,7 +96,6 @@ avaliados após medições reais de latência e instabilidade.
 
 - Público-alvo e contexto de uso.
 - Jornada completa de entrada e descoberta da experiência.
-- Orientação portrait ou landscape.
 - Modelo dos controles touch.
 - Identidade visual, áudio e feedback háptico.
 - Duração e regras completas da partida.

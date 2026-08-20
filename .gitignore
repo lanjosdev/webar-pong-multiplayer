@@ -2,6 +2,7 @@ node_modules/
 dist/
 coverage/
 .vite/
+client/public/external/xr/
 
 .env
 .env.*

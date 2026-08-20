@@ -1,7 +1,7 @@
 # Diretrizes iniciais de UX/UI
 
-Status: princípios confirmados pelo contexto do produto; identidade visual e
-fluxos detalhados permanecem TBD.
+Status: princípios confirmados pelo contexto do produto; bootstrap de câmera
+implementado; identidade visual e fluxos posteriores permanecem TBD.
 
 ## Princípios
 
@@ -21,6 +21,10 @@ fluxos detalhados permanecem TBD.
 4. Dar feedback imediato quando o target for reconhecido.
 5. Orientar recuperação quando o target for perdido.
 6. Oferecer ação compreensível diante de incompatibilidade ou erro.
+
+O bootstrap preserva esse fluxo com carregamento, explicação antes do prompt,
+ação explícita, câmera em tela cheia, status compacto, retry e encerramento. O
+layout aceita portrait e landscape e respeita safe areas sem bloquear rotação.
 
 ## Estados obrigatórios de interface
 
@@ -56,11 +60,9 @@ fluxos detalhados permanecem TBD.
 
 ## Decisões pendentes
 
-- Portrait ou landscape.
 - Estilo visual, tipografia, cores e áudio.
 - Layout e gesto de cada raquete.
 - Necessidade de onboarding ilustrado.
 - Comportamento visual quando o target é perdido.
 - Estratégia para dois jogadores e entrada em sala.
 - Critérios de sucesso de usabilidade.
-
