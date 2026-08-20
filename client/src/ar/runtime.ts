@@ -1,11 +1,24 @@
-import type { CameraPipelineModule, CameraStatus, XrEngine } from './engine-contract'
+import type {
+  CameraPipelineModule,
+  CameraStatus,
+  ImageTargetData,
+  XrEngine,
+} from './engine-contract'
+import { calculateCameraCanvasLayout } from './camera-canvas-layout'
 import type { XrEngineLoader } from './engine-loader'
+import type { ImageTargetDataLoader } from './image-target-data'
+import {
+  createImageTargetModule,
+  installThreeGlobal,
+  type ThreeGlobalHandle,
+} from './image-target-module'
 import type { ArRuntime, ArRuntimeListener, ArRuntimeState } from './types'
 
 const LIFECYCLE_MODULE_NAME = 'webar-runtime-lifecycle'
 
 export interface ArRuntimeOptions {
   document: Document
+  imageTargetLoader: ImageTargetDataLoader
   isEnvironmentSupported?: () => string | null
   loader: XrEngineLoader
   window: Window
@@ -33,13 +46,18 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
   const listeners = new Set<ArRuntimeListener>()
   let state: ArRuntimeState = { status: 'booting' }
   let engine: XrEngine | null = null
+  let imageTargetData: ImageTargetData | null = null
   let preloadPromise: Promise<void> | null = null
   let startPromise: Promise<void> | null = null
   let settleStart: ((error?: Error) => void) | null = null
   let modules: CameraPipelineModule[] = []
+  let threeGlobal: ThreeGlobalHandle | null = null
   let canvas: HTMLCanvasElement | null = null
+  let cameraBackdrop: HTMLVideoElement | null = null
   let running = false
   let disposed = false
+  let trackedTargetName: string | null = null
+  let videoSize: { height: number; width: number } | null = null
 
   const emit = (nextState: ArRuntimeState) => {
     state = nextState
@@ -62,13 +80,76 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
     const viewport = options.window.visualViewport
     const cssWidth = viewport?.width ?? options.window.innerWidth
     const cssHeight = viewport?.height ?? options.window.innerHeight
-    const pixelRatio = options.window.devicePixelRatio || 1
-    const width = Math.max(1, Math.round(cssWidth * pixelRatio))
-    const height = Math.max(1, Math.round(cssHeight * pixelRatio))
+    const layout = calculateCameraCanvasLayout({
+      devicePixelRatio: options.window.devicePixelRatio || 1,
+      ...(videoSize ? { videoHeight: videoSize.height, videoWidth: videoSize.width } : {}),
+      viewportHeight: cssHeight,
+      viewportWidth: cssWidth,
+    })
 
-    if (canvas.width !== width || canvas.height !== height) {
-      canvas.width = width
-      canvas.height = height
+    canvas.style.left = `${String((viewport?.offsetLeft ?? 0) + cssWidth / 2)}px`
+    canvas.style.top = `${String((viewport?.offsetTop ?? 0) + cssHeight / 2)}px`
+    // XR8.Threejs calls renderer.setSize() with updateStyle enabled and writes
+    // the backing-buffer dimensions into canvas.style. Keep the display size in
+    // CSS custom properties so the stylesheet can protect it from that write.
+    canvas.style.setProperty('--camera-canvas-width', `${String(layout.cssWidth)}px`)
+    canvas.style.setProperty('--camera-canvas-height', `${String(layout.cssHeight)}px`)
+    if (canvas.width !== layout.pixelWidth || canvas.height !== layout.pixelHeight) {
+      canvas.width = layout.pixelWidth
+      canvas.height = layout.pixelHeight
+    }
+  }
+
+  const removeCameraBackdrop = () => {
+    if (!cameraBackdrop) {
+      return
+    }
+
+    cameraBackdrop.pause()
+    cameraBackdrop.srcObject = null
+    cameraBackdrop.remove()
+    cameraBackdrop = null
+  }
+
+  const setCameraBackdropActive = (active: boolean) => {
+    if (!cameraBackdrop) {
+      return
+    }
+
+    cameraBackdrop.hidden = !active
+    if (!active) {
+      cameraBackdrop.pause()
+      return
+    }
+
+    const backdrop = cameraBackdrop
+    void backdrop.play().catch(() => {
+      if (cameraBackdrop === backdrop) {
+        removeCameraBackdrop()
+      }
+    })
+  }
+
+  const attachCameraBackdrop = (stream: MediaStream) => {
+    if (!canvas) {
+      return
+    }
+
+    removeCameraBackdrop()
+    const backdrop = options.document.createElement('video')
+    backdrop.className = 'camera-backdrop'
+    backdrop.autoplay = false
+    backdrop.defaultMuted = true
+    backdrop.muted = true
+    backdrop.playsInline = true
+    backdrop.hidden = trackedTargetName === null
+    backdrop.setAttribute('aria-hidden', 'true')
+    backdrop.srcObject = stream
+    canvas.before(backdrop)
+    cameraBackdrop = backdrop
+
+    if (trackedTargetName !== null) {
+      setCameraBackdropActive(true)
     }
   }
 
@@ -76,12 +157,14 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
     options.window.addEventListener('resize', resizeCanvas)
     options.window.addEventListener('orientationchange', resizeCanvas)
     options.window.visualViewport?.addEventListener('resize', resizeCanvas)
+    options.window.visualViewport?.addEventListener('scroll', resizeCanvas)
   }
 
   const removeViewportListeners = () => {
     options.window.removeEventListener('resize', resizeCanvas)
     options.window.removeEventListener('orientationchange', resizeCanvas)
     options.window.visualViewport?.removeEventListener('resize', resizeCanvas)
+    options.window.visualViewport?.removeEventListener('scroll', resizeCanvas)
   }
 
   const handleCameraStatus = (status: CameraStatus) => {
@@ -117,15 +200,52 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
     removePipeline(true)
   }
 
+  const handleTargetScanning = () => {
+    if (!running || disposed) {
+      return
+    }
+
+    trackedTargetName = null
+    setCameraBackdropActive(false)
+    emit({ status: 'searching-target' })
+  }
+
+  const handleTargetFound = (targetName: string) => {
+    if (!running || disposed || trackedTargetName === targetName) {
+      return
+    }
+
+    trackedTargetName = targetName
+    setCameraBackdropActive(true)
+    emit({ status: 'target-found', targetName })
+  }
+
+  const handleTargetLost = (targetName: string) => {
+    if (!running || disposed || trackedTargetName !== targetName) {
+      return
+    }
+
+    trackedTargetName = null
+    setCameraBackdropActive(false)
+    emit({ status: 'target-lost', targetName })
+  }
+
   const createLifecycleModule = (): CameraPipelineModule => ({
     name: LIFECYCLE_MODULE_NAME,
+    onAttach: ({ stream }) => attachCameraBackdrop(stream),
     onCameraStatusChange: ({ status }) => handleCameraStatus(status),
+    onDetach: removeCameraBackdrop,
     onDeviceOrientationChange: resizeCanvas,
     onException: handleEngineException,
     onResume: () => {
       if (running && !disposed) {
-        emit({ status: 'camera-active' })
+        setCameraBackdropActive(false)
+        emit({ status: 'searching-target' })
       }
+    },
+    onVideoSizeChange: ({ videoHeight, videoWidth }) => {
+      videoSize = { height: videoHeight, width: videoWidth }
+      resizeCanvas()
     },
   })
 
@@ -148,7 +268,13 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
       }
     }
 
+    threeGlobal?.dispose()
+    threeGlobal = null
+    removeCameraBackdrop()
+
     running = false
+    trackedTargetName = null
+    videoSize = null
     modules = []
     settlePendingStart(new Error('The XR session was stopped'))
   }
@@ -159,7 +285,13 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
     }
 
     try {
-      if (options.document.visibilityState === 'hidden' && state.status === 'camera-active') {
+      const isActive = [
+        'camera-active',
+        'searching-target',
+        'target-found',
+        'target-lost',
+      ].includes(state.status)
+      if (options.document.visibilityState === 'hidden' && isActive) {
         engine.pause()
         emit({ status: 'paused' })
       } else if (options.document.visibilityState === 'visible' && state.status === 'paused') {
@@ -197,7 +329,12 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
       emit({ status: 'booting' })
       preloadPromise = (async () => {
         try {
-          engine = await options.loader.load()
+          const [loadedEngine, loadedTarget] = await Promise.all([
+            options.loader.load(),
+            options.imageTargetLoader.load(),
+          ])
+          engine = loadedEngine
+          imageTargetData = loadedTarget
           if (!disposed) {
             emit({ status: 'camera-permission' })
           }
@@ -222,7 +359,7 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
         await runtime.preload()
       }
 
-      if (!engine || state.status === 'unsupported') {
+      if (!engine || !imageTargetData || state.status === 'unsupported') {
         throw new Error('The XR Engine is not available')
       }
 
@@ -234,6 +371,7 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
         removePipeline(true)
       }
 
+      videoSize = null
       canvas = nextCanvas
       resizeCanvas()
       addViewportListeners()
@@ -251,10 +389,23 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
       startPromise = pendingStart
 
       try {
-        engine.XrController.configure({ disableWorldTracking: true })
+        engine.XrController.configure({
+          disableWorldTracking: true,
+          imageTargetData: [imageTargetData],
+        })
+        engine.Threejs.configure({ renderCameraTexture: false })
+        threeGlobal = installThreeGlobal(options.window)
         modules = [
           engine.GlTextureRenderer.pipelineModule(),
           engine.XrController.pipelineModule(),
+          engine.Threejs.pipelineModule(),
+          createImageTargetModule({
+            engine,
+            onFound: handleTargetFound,
+            onLost: handleTargetLost,
+            onScanning: handleTargetScanning,
+            targetName: imageTargetData.name,
+          }),
           createLifecycleModule(),
         ]
         engine.addCameraPipelineModules(modules)

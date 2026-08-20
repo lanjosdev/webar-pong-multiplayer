@@ -1,0 +1,23 @@
+{
+  "imagePath": "image-targets/pong-marker-v2_luminance.png",
+  "metadata": null,
+  "name": "pong-marker-v2",
+  "type": "PLANAR",
+  "properties": {
+    "left": 0,
+    "top": 0,
+    "width": 1086,
+    "height": 1448,
+    "isRotated": false,
+    "originalWidth": 1086,
+    "originalHeight": 1448
+  },
+  "resources": {
+    "originalImage": "pong-marker-v2_original.png",
+    "croppedImage": "pong-marker-v2_cropped.png",
+    "thumbnailImage": "pong-marker-v2_thumbnail.png",
+    "luminanceImage": "pong-marker-v2_luminance.png"
+  },
+  "created": 1787238869364,
+  "updated": 1787238869364
+}

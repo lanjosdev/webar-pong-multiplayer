@@ -1,4 +1,5 @@
 import { createXrEngineLoader } from './engine-loader'
+import { createImageTargetDataLoader } from './image-target-data'
 import { createArRuntime } from './runtime'
 import type { ArRuntime } from './types'
 
@@ -10,6 +11,10 @@ export function createDefaultArRuntime(): ArRuntime {
     document,
     window,
   })
+  const imageTargetLoader = createImageTargetDataLoader({
+    baseUrl: import.meta.env.BASE_URL,
+    fetch: window.fetch.bind(window),
+  })
 
-  return createArRuntime({ document, loader, window })
+  return createArRuntime({ document, imageTargetLoader, loader, window })
 }

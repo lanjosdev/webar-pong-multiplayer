@@ -1,7 +1,14 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { Scene } from 'three'
 
-import type { CameraPipelineModule, CameraStatus, XrEngine } from './engine-contract'
+import type {
+  CameraPipelineModule,
+  CameraStatus,
+  ImageTargetData,
+  XrEngine,
+} from './engine-contract'
 import type { XrEngineLoader } from './engine-loader'
+import type { ImageTargetDataLoader } from './image-target-data'
 import { createArRuntime } from './runtime'
 import type { ArRuntimeState } from './types'
 
@@ -13,9 +20,22 @@ class FakeEngine implements XrEngine {
       return { name: 'gl' }
     },
   }
+  readonly scene = new Scene()
+  readonly Threejs = {
+    configure: (options: { renderCameraTexture: boolean }) => {
+      this.calls.push(`three.configure:${String(options.renderCameraTexture)}`)
+    },
+    pipelineModule: () => {
+      this.calls.push('three.pipeline')
+      return { name: 'threejs' }
+    },
+    xrScene: () => ({ scene: this.scene }),
+  }
   readonly XrController = {
-    configure: (options: { disableWorldTracking: boolean }) => {
-      this.calls.push(`xr.configure:${String(options.disableWorldTracking)}`)
+    configure: (options: { disableWorldTracking: boolean; imageTargetData: ImageTargetData[] }) => {
+      this.calls.push(
+        `xr.configure:${String(options.disableWorldTracking)}:${options.imageTargetData[0]?.name ?? ''}`,
+      )
     },
     pipelineModule: () => {
       this.calls.push('xr.pipeline')
@@ -42,31 +62,77 @@ class FakeEngine implements XrEngine {
   run(options: Parameters<XrEngine['run']>[0]): void {
     this.calls.push('run')
     this.runOptions = options
+    for (const module of this.modules) {
+      module.onStart?.({})
+    }
   }
 
   pause(): void {
     this.calls.push('pause')
+    for (const module of this.modules) {
+      module.onPaused?.()
+    }
   }
 
   resume(): void {
     this.calls.push('resume')
-    this.lifecycle()?.onResume?.()
+    for (const module of this.modules) {
+      module.onResume?.()
+    }
   }
 
   stop(): void {
     this.calls.push('stop')
+    for (const module of this.modules) {
+      module.onDetach?.()
+    }
   }
 
   emitCameraStatus(status: CameraStatus): void {
     this.lifecycle()?.onCameraStatusChange?.({ status })
   }
 
+  emitAttach(stream: MediaStream): void {
+    this.lifecycle()?.onAttach?.({ stream })
+  }
+
   emitException(error: unknown): void {
     this.lifecycle()?.onException?.(error)
   }
 
+  emitVideoSize(videoWidth: number, videoHeight: number): void {
+    this.lifecycle()?.onVideoSizeChange?.({ videoHeight, videoWidth })
+  }
+
+  emitPipelineEvent(event: string, detail: unknown): void {
+    for (const module of this.modules) {
+      for (const listener of module.listeners ?? []) {
+        if (listener.event === event) {
+          listener.process({ detail, name: event })
+        }
+      }
+    }
+  }
+
   private lifecycle(): CameraPipelineModule | undefined {
     return this.modules.find((module) => module.name === 'webar-runtime-lifecycle')
+  }
+}
+
+const imageTarget: ImageTargetData = {
+  imagePath: '/image-targets/pong-marker-v2/pong-marker-v2_luminance.png',
+  metadata: null,
+  name: 'pong-marker-v2',
+  properties: { height: 1448, width: 1086 },
+  type: 'PLANAR',
+}
+
+class FakeImageTargetLoader implements ImageTargetDataLoader {
+  loadCount = 0
+
+  load(): Promise<ImageTargetData> {
+    this.loadCount += 1
+    return Promise.resolve(imageTarget)
   }
 }
 
@@ -93,29 +159,34 @@ function setVisibility(value: DocumentVisibilityState): void {
 function setup() {
   const engine = new FakeEngine()
   const loader = new FakeLoader(engine)
+  const imageTargetLoader = new FakeImageTargetLoader()
   const runtime = createArRuntime({
     document,
+    imageTargetLoader,
     isEnvironmentSupported: () => null,
     loader,
     window,
   })
   const states: ArRuntimeState[] = []
   runtime.subscribe((state) => states.push(state))
-  return { engine, loader, runtime, states }
+  return { engine, imageTargetLoader, loader, runtime, states }
 }
 
 afterEach(() => {
+  vi.restoreAllMocks()
+  vi.useRealTimers()
   setVisibility('visible')
   document.body.replaceChildren()
 })
 
 describe('createArRuntime', () => {
   it('preloads the engine without opening the camera', async () => {
-    const { engine, loader, runtime, states } = setup()
+    const { engine, imageTargetLoader, loader, runtime, states } = setup()
 
     await runtime.preload()
 
     expect(loader.loadCount).toBe(1)
+    expect(imageTargetLoader.loadCount).toBe(1)
     expect(engine.calls).toEqual([])
     expect(states.at(-1)).toEqual({ status: 'camera-permission' })
     runtime.dispose()
@@ -131,9 +202,11 @@ describe('createArRuntime', () => {
     await started
 
     expect(engine.calls).toEqual([
-      'xr.configure:true',
+      'xr.configure:true:pong-marker-v2',
+      'three.configure:false',
       'gl.pipeline',
       'xr.pipeline',
+      'three.pipeline',
       'add-modules',
       'run',
     ])
@@ -145,6 +218,19 @@ describe('createArRuntime', () => {
     expect(engine.runOptions?.canvas).toBe(canvas)
     expect(canvas.width).toBeGreaterThan(0)
     expect(canvas.height).toBeGreaterThan(0)
+    engine.emitVideoSize(1920, 1080)
+    const protectedWidth = canvas.style.getPropertyValue('--camera-canvas-width')
+    const protectedHeight = canvas.style.getPropertyValue('--camera-canvas-height')
+    expect(Number.parseFloat(protectedWidth)).toBeLessThanOrEqual(window.innerWidth)
+    expect(Number.parseFloat(protectedHeight)).toBeLessThanOrEqual(window.innerHeight)
+    expect(canvas.width / canvas.height).toBeCloseTo(1920 / 1080, 2)
+
+    // Reproduce WebGLRenderer.setSize() updating the normal inline style. The
+    // protected dimensions remain available to the !important stylesheet rule.
+    canvas.style.width = `${String(canvas.width)}px`
+    canvas.style.height = `${String(canvas.height)}px`
+    expect(canvas.style.getPropertyValue('--camera-canvas-width')).toBe(protectedWidth)
+    expect(canvas.style.getPropertyValue('--camera-canvas-height')).toBe(protectedHeight)
     expect(states.at(-1)).toEqual({ status: 'camera-active' })
     runtime.dispose()
   })
@@ -160,11 +246,57 @@ describe('createArRuntime', () => {
 
     const retry = runtime.retry()
     expect(engine.calls.filter((call) => call === 'run')).toHaveLength(2)
-    expect(engine.calls).toContain('remove-modules:3')
+    expect(engine.calls).toContain('remove-modules:5')
     engine.emitCameraStatus('hasVideo')
     await retry
 
     expect(states.at(-1)).toEqual({ status: 'camera-active' })
+    runtime.dispose()
+  })
+
+  it('reuses the camera stream as a decorative backdrop and removes it on stop', async () => {
+    const { engine, runtime } = setup()
+    const canvas = document.createElement('canvas')
+    document.body.append(canvas)
+    const stream = {} as MediaStream
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
+    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined)
+    await runtime.preload()
+
+    const started = runtime.start(canvas)
+    engine.emitAttach(stream)
+    engine.emitCameraStatus('hasVideo')
+    await started
+
+    const backdrop = document.querySelector<HTMLVideoElement>('.camera-backdrop')
+    expect(backdrop?.nextElementSibling).toBe(canvas)
+    expect(backdrop?.srcObject).toBe(stream)
+    expect(backdrop?.autoplay).toBe(false)
+    expect(backdrop?.muted).toBe(true)
+    expect(backdrop?.playsInline).toBe(true)
+    expect(backdrop?.hidden).toBe(true)
+    expect(play).not.toHaveBeenCalled()
+
+    engine.emitPipelineEvent('reality.imagefound', {
+      name: 'pong-marker-v2',
+      position: { x: 1, y: 2, z: 3 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      scale: 2,
+      scaledHeight: 1,
+      scaledWidth: 0.75,
+    })
+    expect(backdrop?.hidden).toBe(false)
+    expect(play).toHaveBeenCalledOnce()
+
+    engine.emitPipelineEvent('reality.imagescanning', {})
+    expect(backdrop?.hidden).toBe(true)
+    expect(pause).toHaveBeenCalledOnce()
+
+    runtime.stop()
+
+    expect(document.querySelector('.camera-backdrop')).toBeNull()
+    expect(pause).toHaveBeenCalledTimes(2)
+    expect(backdrop?.srcObject).toBeNull()
     runtime.dispose()
   })
 
@@ -185,6 +317,69 @@ describe('createArRuntime', () => {
     expect(states.map((state) => state.status)).toEqual(
       expect.arrayContaining(['paused', 'recovering', 'camera-active']),
     )
+    runtime.dispose()
+  })
+
+  it('maps image target scanning, found, lost and reacquired states', async () => {
+    vi.useFakeTimers()
+    const { engine, runtime, states } = setup()
+    await runtime.preload()
+    const started = runtime.start(document.createElement('canvas'))
+    engine.emitCameraStatus('hasVideo')
+    await started
+
+    engine.emitPipelineEvent('reality.imagescanning', {})
+    engine.emitPipelineEvent('reality.imagefound', {
+      name: 'pong-marker-v2',
+      position: { x: 1, y: 2, z: 3 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      scale: 2,
+      scaledHeight: 1,
+      scaledWidth: 0.75,
+    })
+    expect(engine.scene.children[0]?.visible).toBe(true)
+    expect(engine.scene.children[0]?.position.toArray()).toEqual([1, 2, 3])
+    engine.emitPipelineEvent('reality.imageupdated', {
+      name: 'pong-marker-v2',
+      position: { x: 2, y: 3, z: 4 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      scale: 2,
+      scaledHeight: 1,
+      scaledWidth: 0.75,
+    })
+    expect(engine.scene.children[0]?.position.toArray()).toEqual([2, 3, 4])
+    engine.emitPipelineEvent('reality.imagelost', { name: 'pong-marker-v2' })
+    expect(engine.scene.children[0]?.visible).toBe(true)
+    vi.advanceTimersByTime(299)
+    expect(engine.scene.children[0]?.visible).toBe(true)
+    engine.emitPipelineEvent('reality.imageupdated', {
+      name: 'pong-marker-v2',
+      position: { x: 2, y: 3, z: 4 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      scale: 2,
+      scaledHeight: 1,
+      scaledWidth: 0.75,
+    })
+    vi.advanceTimersByTime(1)
+    expect(engine.scene.children[0]?.visible).toBe(true)
+    engine.emitPipelineEvent('reality.imagelost', { name: 'pong-marker-v2' })
+    vi.advanceTimersByTime(300)
+    expect(engine.scene.children[0]?.visible).toBe(false)
+    engine.emitPipelineEvent('reality.imagefound', {
+      name: 'pong-marker-v2',
+      position: { x: 1, y: 2, z: 3 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      scale: 2,
+      scaledHeight: 1,
+      scaledWidth: 0.75,
+    })
+    expect(engine.scene.children[0]?.visible).toBe(true)
+
+    expect(states.map(({ status }) => status)).toEqual(
+      expect.arrayContaining(['searching-target', 'target-found', 'target-lost']),
+    )
+    expect(states.filter(({ status }) => status === 'target-found')).toHaveLength(2)
+    expect(states.at(-1)).toEqual({ status: 'target-found', targetName: 'pong-marker-v2' })
     runtime.dispose()
   })
 
@@ -210,6 +405,7 @@ describe('createArRuntime', () => {
     const loader = new FakeLoader(engine)
     const runtime = createArRuntime({
       document,
+      imageTargetLoader: new FakeImageTargetLoader(),
       isEnvironmentSupported: () => 'HTTPS obrigatório.',
       loader,
       window,

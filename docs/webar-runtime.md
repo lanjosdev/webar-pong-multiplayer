@@ -2,9 +2,9 @@
 
 ## Escopo atual
 
-Validar o 8th Wall com um Image Target antes de implementar o Pong. Este
-documento não fixa APIs ou nomes de eventos do SDK até a forma de integração e
-versão utilizadas serem confirmadas.
+Validar o 8th Wall com um Image Target antes de implementar o Pong. O adapter
+usa as APIs e eventos confirmados para `@8thwall/engine-binary@1.0.0`;
+alterações de versão exigem nova consulta às fontes oficiais.
 
 ## Restrição de plataforma e distribuição
 
@@ -16,9 +16,11 @@ artefatos originais são copiados para `public/external/xr`; após o build, o
 inventário e os hashes SHA-256 são comparados byte a byte com o pacote instalado.
 
 O bootstrap carrega `xr.js` pelo `BASE_URL` do Vite e pré-carrega o chunk
-`slam`. A pipeline atual contém somente `GlTextureRenderer`, `XrController` e
-um módulo próprio de lifecycle. `disableWorldTracking: true` é configurado antes
-de criar a pipeline e executar o engine. Não há Image Target nem cena Three.js.
+`slam`. A pipeline registra, nesta ordem, `GlTextureRenderer`, `XrController`,
+`Threejs`, o módulo local do target e o módulo de lifecycle.
+`disableWorldTracking: true` e o `imageTargetData` são configurados antes de
+criar a pipeline e executar o engine. `Threejs` não renderiza uma segunda
+textura de câmera; o feed permanece responsabilidade de `GlTextureRenderer`.
 
 Não use como referência de implementação APIs, credenciais ou fluxo de deploy
 exclusivos da plataforma hospedada legada. Consulte
@@ -33,6 +35,24 @@ exclusivos da plataforma hospedada legada. Consulte
 - Portrait e landscape são suportados responsivamente; a rotação não é
   bloqueada.
 - A câmera só é solicitada após o usuário tocar em `Iniciar experiência`.
+- O canvas preserva a proporção reportada pelo vídeo e usa o maior retângulo
+  contido no viewport, evitando o recorte que pareceria zoom e reduziria o campo
+  de visão necessário para enquadrar o target. Depois da aquisição, o espaço
+  restante recebe uma cópia decorativa ampliada e escurecida do mesmo
+  `MediaStream`; ela permanece pausada durante procura/recuperação, não abre
+  outra câmera e não participa do tracking ou da renderização AR.
+- `XR8.Threejs` chama `WebGLRenderer.setSize()` com atualização de estilo e tenta
+  aplicar as dimensões do backing buffer ao tamanho visual do canvas. O runtime
+  mantém o backing buffer em alta resolução, enquanto propriedades CSS
+  protegidas preservam o tamanho lógico calculado e evitam ampliação pelo DPR.
+- O target padrão confirmado é `pong-marker-v2`, planar, 3:4 e impresso em
+  150 x 200 mm numa folha A4 em escala 100%; papel fosco é recomendado. O teste
+  físico qualitativo apresentou resultado muito melhor que o v1. O resultado
+  anterior permanece documentado, mas os assets do v1 foram removidos do
+  repositório e do build.
+- O backing buffer de renderização usa no máximo DPR 1,5 para reduzir pressão de
+  GPU sem alterar o tamanho CSS nem o campo de visão do feed. Esse limite é uma
+  otimização provisória, não um budget de aceitação.
 
 ## Estados mínimos do runtime
 
@@ -42,16 +62,17 @@ exclusivos da plataforma hospedada legada. Consulte
 - `camera-denied`: permissão ausente com orientação de recuperação.
 - `searching-target`: câmera ativa, aguardando o marcador.
 - `target-found`: pose válida e conteúdo disponível.
-- `target-lost`: política visual ainda TBD.
+- `target-lost`: perda confirmada após tolerância de 300 ms; conteúdo ocultado e
+  orientação de reenquadramento exibida.
 - `recovering`: tentativa de reaquisição ou retomada de lifecycle.
 - `fatal-error`: falha não recuperável com ação clara para o usuário.
 
 Os nomes são conceituais; a implementação pode usar outro modelo desde que
 cubra os mesmos estados observáveis.
 
-No bootstrap atual, `camera-permission`, `camera-denied`, `unsupported`,
-`recovering` e `fatal-error` já possuem representação observável. Estados de
-target permanecem reservados para a entrega de Image Tracking.
+Todos esses estados possuem representação observável. Enquanto o target está
+perdido, o objeto de referência é ocultado e a interface orienta o
+reenquadramento; essa política é provisória até a validação em aparelho.
 
 ## Separação de responsabilidades
 
@@ -76,8 +97,13 @@ encerrar. Tipos e chamadas do `XR8` ficam confinados em `client/src/ar/`.
 
 O bootstrap pausa o engine em `visibilitychange` ao ir para background, retoma
 ao voltar ao primeiro plano e usa `stop()` no encerramento. Resize,
-`orientationchange` e `visualViewport` atualizam o backing buffer do canvas; os
-listeners e módulos são removidos de forma idempotente.
+`orientationchange`, `visualViewport` e mudanças nas dimensões do vídeo
+recalculam o canvas contido e seu backing buffer; os listeners e módulos são
+removidos de forma idempotente. O vídeo decorativo é criado em `onAttach`, usa o
+stream já fornecido pelo engine, só reproduz após `imagefound` e é pausado,
+desconectado e removido no teardown. Uma perda do target só é publicada e oculta
+o conteúdo após 300 ms; `imagefound` ou `imageupdated` nesse intervalo cancela a
+perda transitória.
 
 ## Matriz de validação do tracking
 
@@ -95,13 +121,11 @@ Para cada aparelho selecionado, registrar:
 
 ## Critérios ainda TBD
 
-- Dimensões e arte final do target.
 - Unidade e escala física usadas pela cena.
 - Distâncias e ângulos formais da matriz de teste.
 - Limite aceitável de jitter e drift.
 - Tempo máximo aceitável de aquisição e reaquisição.
-- Comportamento visual ao perder o target: congelar, ocultar, suavizar ou orientar
-  o usuário.
+- Refinamento da política provisória de ocultar e orientar após 300 ms de perda.
 - Condições que justificariam combinar Image Tracking e SLAM.
 
 ## Gate antes de adicionar SLAM

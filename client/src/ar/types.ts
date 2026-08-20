@@ -3,6 +3,9 @@ export type ArRuntimeState =
   | { status: 'camera-permission' }
   | { status: 'requesting-camera' }
   | { status: 'camera-active' }
+  | { status: 'searching-target' }
+  | { status: 'target-found'; targetName: string }
+  | { status: 'target-lost'; targetName: string }
   | { status: 'paused' }
   | { status: 'recovering' }
   | { status: 'camera-denied'; message: string }

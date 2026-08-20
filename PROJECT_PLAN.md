@@ -1,6 +1,6 @@
 # Plano geral do projeto
 
-Última atualização: 2026-08-19
+Última atualização: 2026-08-20
 
 Este é o painel central de progresso e gates do projeto. Detalhes de produto,
 arquitetura e validação permanecem nos documentos especializados em `docs/`.
@@ -15,21 +15,29 @@ arquitetura e validação permanecem nos documentos especializados em `docs/`.
 ## Estado atual
 
 - Fase ativa: **Fase 0 — Fundação e decisões iniciais**.
-- Próximo gate: validar o bootstrap WebAR em Android e iPhone, disponibilizar o
-  Image Target e então validar seu tracking.
+- Próximo gate: validar escala, orientação, perda, reaquisição e estabilidade do
+  `pong-marker-v2` em Android intermediário e iPhone 14.
 - Implementação multiplayer: **adiada até a aprovação das fases 1 e 2**.
 
-O engine binário já é copiado e verificado no build, e o bootstrap inicializa
-câmera e `XrController` com World Tracking desativado. Essa integração ainda
-não possui evidência em aparelho real e não aprova o gate WebAR.
+O engine binário já é copiado e verificado no build. O bootstrap de câmera e
+lifecycle foi executado com sucesso em Android e iPhone conforme validação
+manual informada pelo usuário; o registro detalhado de evidências foi
+dispensado. O primeiro teste físico do `pong-marker-v1` foi aceitável, porém
+instável, no iPhone 14 e teve aquisição lenta e resultado ruim em um Android
+intermediário. Em teste físico, o `pong-marker-v2` 3:4, com detalhes mais
+distribuídos, apresentou resultado qualitativamente muito melhor e foi
+confirmado pelo usuário como o target padrão. A avaliação do v1 permanece
+documentada, mas seus assets foram removidos. A detecção física do v2 e a
+presença do objeto Three.js foram confirmadas, mas o gate de tracking continua
+aberto até validar escala, orientação, perda, reaquisição e estabilidade.
 
 ### Restrição externa confirmada
 
 A plataforma hospedada do 8th Wall foi encerrada em 28 de fevereiro de 2026.
 Este projeto novo deve integrar e hospedar uma distribuição atual do engine;
 não pode depender do editor, hosting ou credenciais da plataforma legada. O
-engine binário distribuído foi escolhido no ADR-0001; a integração do runtime
-com Vite permanece pendente.
+engine binário distribuído foi escolhido no ADR-0001 e sua integração com Vite
+e hosting próprio está concluída.
 
 ## Direção do produto
 
@@ -53,8 +61,8 @@ gameplay e rede.
 - [x] Revisar licença e obrigações de atribuição do engine escolhido.
 - [x] Definir e validar a cópia dos artefatos e avisos do engine no build.
 - [x] Definir integração do engine escolhido com Vite e hosting próprio.
-- [ ] Definir e disponibilizar o asset do Image Target.
-- [ ] Registrar dimensões físicas e qualidade do target.
+- [x] Definir e disponibilizar o asset do Image Target.
+- [x] Registrar dimensões físicas e qualidade do target.
 - [x] Suportar portrait e landscape com layout responsivo, sem bloquear rotação.
 - [ ] Definir matriz mínima de aparelhos, OS e navegadores.
 - [ ] Definir budgets provisórios de FPS, tempo de carregamento e memória.
@@ -75,14 +83,17 @@ gameplay e rede.
 
 ## Fase 1 — WebAR e Image Tracking
 
-- [ ] Inicializar câmera e pipeline WebAR.
-- [ ] Detectar o Image Target configurado.
-- [ ] Posicionar um objeto de referência na origem do target.
+- [x] Inicializar câmera e pipeline WebAR.
+- [x] Detectar o Image Target `pong-marker-v2` em aparelho real.
+- [x] Posicionar um objeto de referência na origem do target em implementação
+  controlada; presença visual confirmada qualitativamente em aparelho, com
+  escala e orientação ainda pendentes.
 - [ ] Validar escala e orientação das coordenadas.
 - [ ] Testar objetos além dos limites físicos do target.
-- [ ] Tratar target encontrado, atualizado, perdido e reencontrado.
-- [ ] Tratar permissão negada, incompatibilidade e erro de inicialização.
-- [ ] Implementar teardown e recuperação de lifecycle.
+- [x] Tratar target encontrado, atualizado, perdido e reencontrado em código;
+  comportamento real ainda precisa ser aprovado.
+- [x] Tratar permissão negada, incompatibilidade e erro de inicialização.
+- [x] Implementar teardown e recuperação de lifecycle.
 - [ ] Coletar evidências na matriz mínima de aparelhos.
 - [ ] Medir jitter, reacquisition, FPS e comportamento térmico conforme o plano
   de testes.
@@ -149,7 +160,7 @@ gameplay e rede.
 ## Decisões abertas
 
 1. Evidência mobile do bootstrap WebAR e da retomada de lifecycle.
-2. Asset, dimensões e condições físicas do Image Target.
+2. Condições de impressão, iluminação e durabilidade do Image Target em uso.
 3. Layout e gesto dos controles touch.
 4. Aparelhos, versões mínimas de OS e browsers suportados.
 5. Critérios numéricos para tracking, FPS, carregamento e sessão térmica.

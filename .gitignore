@@ -3,6 +3,7 @@ dist/
 coverage/
 .vite/
 client/public/external/xr/
+.codex-remote-attachments/
 
 .env
 .env.*

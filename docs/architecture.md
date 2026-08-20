@@ -43,9 +43,16 @@ Cada cliente mantém localmente: câmera, tracking AR, pose e renderização.
 - **Networking futuro**: transporte e tradução entre contratos de rede e
   comandos/snapshots do jogo.
 
-No bootstrap atual, `client/src/ar/` contém o loader, o contrato mínimo validado
-do SDK e o runtime de câmera. A UI consome apenas estados discriminados e
-intenções de lifecycle; o objeto global `XR8` não atravessa essa fronteira.
+Na implementação atual, `client/src/ar/` contém loaders do engine e do manifesto
+do target, o contrato mínimo validado do SDK, o runtime de câmera e um módulo de
+cena responsável apenas pela raiz rastreada e pelo objeto de referência. A UI
+consome estados discriminados e intenções de lifecycle; `XR8`, eventos de pose e
+Three.js não atravessam essa fronteira.
+
+O preenchimento decorativo das áreas externas ao canvas AR reutiliza o
+`MediaStream` entregue pelo engine em um vídeo independente e escurecido. Ele
+fica pausado durante aquisição e recuperação do target, não solicita outra
+câmera, não produz pose e é descartado junto com a sessão pelo runtime.
 
 ## Estrutura física
 

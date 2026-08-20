@@ -42,8 +42,26 @@ function contentForState(state: ArRuntimeState): StateContent {
     case 'camera-active':
       return {
         eyebrow: 'WebAR ativa',
-        title: 'Câmera ativa',
-        description: 'Bootstrap WebAR em execução.',
+        title: 'Preparando o marcador',
+        description: 'Aguarde enquanto o rastreamento é iniciado.',
+      }
+    case 'searching-target':
+      return {
+        eyebrow: 'Rastreamento ativo',
+        title: 'Aponte para o marcador',
+        description: 'Enquadre toda a imagem impressa, sem reflexos e com boa iluminação.',
+      }
+    case 'target-found':
+      return {
+        eyebrow: 'Marcador reconhecido',
+        title: 'Target encontrado',
+        description: 'O objeto de referência está ancorado à imagem.',
+      }
+    case 'target-lost':
+      return {
+        eyebrow: 'Marcador fora de vista',
+        title: 'Reenquadre o marcador',
+        description: 'Mantenha toda a imagem visível para recuperar o conteúdo.',
       }
     case 'paused':
       return {
@@ -90,7 +108,15 @@ function contentForState(state: ArRuntimeState): StateContent {
 }
 
 function isCameraVisible(state: ArRuntimeState): boolean {
-  return ['requesting-camera', 'camera-active', 'paused', 'recovering'].includes(state.status)
+  return [
+    'requesting-camera',
+    'camera-active',
+    'searching-target',
+    'target-found',
+    'target-lost',
+    'paused',
+    'recovering',
+  ].includes(state.status)
 }
 
 export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppHandle {
@@ -149,14 +175,14 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
   const render = (nextState: ArRuntimeState) => {
     const content = contentForState(nextState)
     const cameraVisible = isCameraVisible(nextState)
-    const cameraActive = nextState.status === 'camera-active'
+    const sessionRunning = isCameraVisible(nextState) && nextState.status !== 'requesting-camera'
 
     shell.dataset['arState'] = nextState.status
     canvas.hidden = !cameraVisible
     panel.hidden = cameraVisible
     cameraHud.hidden = !cameraVisible
     cameraStatus.textContent = content.title
-    stopAction.hidden = !cameraActive
+    stopAction.hidden = !sessionRunning
 
     eyebrow.textContent = content.eyebrow
     title.textContent = content.title

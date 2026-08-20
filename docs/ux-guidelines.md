@@ -22,9 +22,13 @@ implementado; identidade visual e fluxos posteriores permanecem TBD.
 5. Orientar recuperação quando o target for perdido.
 6. Oferecer ação compreensível diante de incompatibilidade ou erro.
 
-O bootstrap preserva esse fluxo com carregamento, explicação antes do prompt,
-ação explícita, câmera em tela cheia, status compacto, retry e encerramento. O
-layout aceita portrait e landscape e respeita safe areas sem bloquear rotação.
+O fluxo implementado inclui carregamento, explicação antes do prompt, ação
+explícita, câmera na maior área possível sem cortar seu campo de visão,
+orientação para enquadrar, confirmação de detecção, instrução de reaquisição,
+retry e encerramento. O layout aceita portrait e landscape, respeita safe areas
+sem bloquear rotação. Quando as proporções divergem, o feed funcional permanece
+inteiro e centralizado. O preenchimento decorativo permanece pausado enquanto o
+target é procurado e só aparece, escurecido e sem blur, depois da aquisição.
 
 ## Estados obrigatórios de interface
 
@@ -63,6 +67,7 @@ layout aceita portrait e landscape e respeita safe areas sem bloquear rotação.
 - Estilo visual, tipografia, cores e áudio.
 - Layout e gesto de cada raquete.
 - Necessidade de onboarding ilustrado.
-- Comportamento visual quando o target é perdido.
+- Refinamento do comportamento visual quando o target é perdido; ocultar o
+  conteúdo imediatamente é a política provisória da validação inicial.
 - Estratégia para dois jogadores e entrada em sala.
 - Critérios de sucesso de usabilidade.

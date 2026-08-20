@@ -81,12 +81,12 @@ describe('mountApp', () => {
     const runtime = new FakeRuntime()
     mountApp(root, { runtime })
 
-    runtime.emit({ status: 'camera-active' })
+    runtime.emit({ status: 'searching-target' })
 
     expect(root.querySelector<HTMLCanvasElement>('.camera-feed')?.hidden).toBe(false)
     expect(root.querySelector<HTMLElement>('.status-panel')?.hidden).toBe(true)
     expect(root.querySelector<HTMLElement>('.camera-hud')?.hidden).toBe(false)
-    expect(root.querySelector('.camera-status')?.textContent).toBe('Câmera ativa')
+    expect(root.querySelector('.camera-status')?.textContent).toBe('Aponte para o marcador')
 
     root.querySelector<HTMLButtonElement>('.stop-action')?.click()
 
@@ -94,6 +94,21 @@ describe('mountApp', () => {
     expect(root.querySelector<HTMLButtonElement>('.primary-action')?.textContent).toBe(
       'Iniciar experiência',
     )
+  })
+
+  it('guides target acquisition, loss and reacquisition in the camera HUD', () => {
+    const root = document.createElement('div')
+    const runtime = new FakeRuntime()
+    mountApp(root, { runtime })
+
+    runtime.emit({ status: 'target-found', targetName: 'pong-marker-v2' })
+    expect(root.querySelector('.camera-status')?.textContent).toBe('Target encontrado')
+
+    runtime.emit({ status: 'target-lost', targetName: 'pong-marker-v2' })
+    expect(root.querySelector('.camera-status')?.textContent).toBe('Reenquadre o marcador')
+
+    runtime.emit({ status: 'target-found', targetName: 'pong-marker-v2' })
+    expect(root.querySelector('.camera-status')?.textContent).toBe('Target encontrado')
   })
 
   it('renders recoverable camera and engine failures', () => {

@@ -5,6 +5,11 @@ import { createXrEngineLoader } from './engine-loader'
 function engineShape(): unknown {
   return {
     GlTextureRenderer: { pipelineModule: () => ({ name: 'gl' }) },
+    Threejs: {
+      configure: () => undefined,
+      pipelineModule: () => ({ name: 'threejs' }),
+      xrScene: () => ({ scene: {} }),
+    },
     XrConfig: {
       camera: () => ({ BACK: 'back' }),
       device: () => ({ MOBILE: 'mobile' }),
