@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { ArRuntime, ArRuntimeListener, ArRuntimeState } from './ar'
+import type {
+  ArRuntime,
+  ArRuntimeListener,
+  ArRuntimeState,
+  TrackingLabConfig,
+  TrackingSnapshot,
+  TrackingSnapshotListener,
+} from './ar'
 import { mountApp } from './app'
 
 class FakeRuntime implements ArRuntime {
@@ -9,8 +16,31 @@ class FakeRuntime implements ArRuntime {
   stopCount = 0
   preloadCount = 0
   disposeCount = 0
+  trackingConfig: TrackingLabConfig | null = null
+  recalibrateCount = 0
   private state: ArRuntimeState = { status: 'booting' }
   private readonly listeners = new Set<ArRuntimeListener>()
+  private readonly trackingListeners = new Set<TrackingSnapshotListener>()
+  private trackingSnapshot: TrackingSnapshot = {
+    fieldCorners: [],
+    framesPerSecond: null,
+    metersPerSceneUnit: 1,
+    recalibrationRequired: false,
+    targetPose: null,
+    targetStatus: 'scanning',
+    timestampMs: Date.now(),
+    worldLimitedExceeded: false,
+    worldReason: null,
+    worldStatus: 'unavailable',
+  }
+
+  configureTrackingLab(config: TrackingLabConfig): void {
+    this.trackingConfig = config
+  }
+
+  recalibrateTracking(): void {
+    this.recalibrateCount += 1
+  }
 
   preload(): Promise<void> {
     this.preloadCount += 1
@@ -37,6 +67,12 @@ class FakeRuntime implements ArRuntime {
     this.listeners.add(listener)
     listener(this.state)
     return () => this.listeners.delete(listener)
+  }
+
+  subscribeTracking(listener: TrackingSnapshotListener): () => void {
+    this.trackingListeners.add(listener)
+    listener(this.trackingSnapshot)
+    return () => this.trackingListeners.delete(listener)
   }
 
   dispose(): void {
@@ -109,6 +145,32 @@ describe('mountApp', () => {
 
     runtime.emit({ status: 'target-found', targetName: 'pong-marker-v2' })
     expect(root.querySelector('.camera-status')?.textContent).toBe('Target encontrado')
+  })
+
+  it('mounts the opt-in tracking lab without changing the normal application', () => {
+    const root = document.createElement('div')
+    const runtime = new FakeRuntime()
+    mountApp(root, { runtime, trackingLabEnabled: true })
+
+    expect(root.querySelector('.tracking-lab')).not.toBeNull()
+    expect(runtime.trackingConfig).toMatchObject({
+      enabled: true,
+      fieldLengthMeters: 1.5,
+      mode: 'image-only',
+      targetHeightMeters: 0.26,
+    })
+
+    const fieldSelect = root.querySelectorAll<HTMLSelectElement>('.lab-field select')[1]
+    expect(fieldSelect).toBeDefined()
+    if (fieldSelect) {
+      fieldSelect.value = '2'
+      fieldSelect.dispatchEvent(new Event('change'))
+    }
+    expect(runtime.trackingConfig?.fieldLengthMeters).toBe(2)
+
+    runtime.emit({ status: 'searching-target' })
+    expect(fieldSelect?.disabled).toBe(true)
+    expect(root.querySelector<HTMLButtonElement>('.lab-actions button')?.disabled).toBe(false)
   })
 
   it('renders recoverable camera and engine failures', () => {

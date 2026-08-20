@@ -15,8 +15,9 @@ arquitetura e validação permanecem nos documentos especializados em `docs/`.
 ## Estado atual
 
 - Fase ativa: **Fase 0 — Fundação e decisões iniciais**.
-- Próximo gate: validar escala, orientação, perda, reaquisição e estabilidade do
-  `pong-marker-v2` em Android intermediário e iPhone 14.
+- Próximo gate: executar o laboratório A4 nos modos `image-only`,
+  `world-relative` e `world-absolute`, validando o maior campo estável entre
+  1,0, 1,5 e 2,0 m no Android intermediário e iPhone 14.
 - Implementação multiplayer: **adiada até a aprovação das fases 1 e 2**.
 
 O engine binário já é copiado e verificado no build. O bootstrap de câmera e
@@ -30,6 +31,13 @@ confirmado pelo usuário como o target padrão. A avaliação do v1 permanece
 documentada, mas seus assets foram removidos. A detecção física do v2 e a
 presença do objeto Three.js foram confirmadas, mas o gate de tracking continua
 aberto até validar escala, orientação, perda, reaquisição e estabilidade.
+
+Após observar que o v2 ainda perde tracking à distância e com mudanças lentas
+de perspectiva, o usuário definiu um experimento com uma folha A4, campos de
+1,0 a 2,0 m e distância operacional máxima de 1,5 m. O laboratório opt-in,
+dois PDFs A4 maximizados, telemetria exportável e o protótipo híbrido com SLAM
+foram implementados. Isso não aprova World Tracking nem o gate: faltam os
+ensaios físicos comparáveis nos dois aparelhos.
 
 ### Restrição externa confirmada
 
@@ -98,7 +106,14 @@ gameplay e rede.
 - [ ] Medir jitter, reacquisition, FPS e comportamento térmico conforme o plano
   de testes.
 - [ ] Avaliar se Image Tracking isolado é suficiente.
-- [ ] Se necessário, registrar ADR antes de adicionar World Tracking/SLAM.
+- [x] Criar laboratório opt-in com campos 1,0 x 0,5, 1,5 x 0,75 e 2,0 x 1,0 m,
+  seleção de target, distância, modo e exportação JSON.
+- [x] Gerar PDFs A4 de 195 x 260 mm e fallback de 180 x 240 mm para comparação
+  com o baseline de 150 x 200 mm.
+- [x] Registrar ADR-0002 e implementar os protótipos `world-relative` e
+  `world-absolute` sem alterar o fluxo público.
+- [ ] Executar a matriz A4 e decidir se o modo híbrido deve ser adotado no fluxo
+  público.
 
 ### Gate de saída da fase 1
 
@@ -164,9 +179,10 @@ gameplay e rede.
 3. Layout e gesto dos controles touch.
 4. Aparelhos, versões mínimas de OS e browsers suportados.
 5. Critérios numéricos para tracking, FPS, carregamento e sessão térmica.
-6. Estratégia de calibração para campo maior que o target.
-7. Necessidade real de World Tracking/SLAM após medições da fase 1 e conforme a
-   distribuição disponível.
+6. Resultado da comparação entre campos de 1,0, 1,5 e 2,0 m e escalas relativa
+   e absoluta.
+7. Adoção real de World Tracking/SLAM no fluxo público após as medições do
+   laboratório.
 8. Socket.IO ou WebSocket puro na fase 3.
 9. Fluxo de sala, identidade, reconnect e eventual autenticação.
 10. Hospedagem do frontend e do servidor.

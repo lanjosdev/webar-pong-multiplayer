@@ -3,7 +3,21 @@ import { createImageTargetDataLoader } from './image-target-data'
 import { createArRuntime } from './runtime'
 import type { ArRuntime } from './types'
 
-export type { ArRuntime, ArRuntimeListener, ArRuntimeState } from './types'
+export type {
+  ArRuntime,
+  ArRuntimeListener,
+  ArRuntimeState,
+  CameraDistanceMeters,
+  FieldLengthMeters,
+  TrackingLabConfig,
+  TrackingMode,
+  TrackingSnapshot,
+  TrackingSnapshotListener,
+  TrackingTargetPose,
+  TrackingVector3,
+  TrialScenario,
+  WorldTrackingStatus,
+} from './types'
 
 export function createDefaultArRuntime(): ArRuntime {
   const loader = createXrEngineLoader({

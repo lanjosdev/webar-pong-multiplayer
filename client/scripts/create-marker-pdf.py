@@ -16,15 +16,17 @@ class TargetSpec:
     height_mm: int
     name: str
     output_name: str
+    print_only: bool
     source_path: Path
     target_bottom_mm: int
     width_mm: int
 
 
-TARGET = TargetSpec(
+STANDARD_TARGET = TargetSpec(
     height_mm=200,
     name="pong-marker-v2",
     output_name="pong-marker-v2-a4-150x200mm.pdf",
+    print_only=False,
     source_path=(
         PROJECT_ROOT
         / "client"
@@ -36,6 +38,28 @@ TARGET = TargetSpec(
     target_bottom_mm=42,
     width_mm=150,
 )
+
+MAX_A4_TARGET = TargetSpec(
+    height_mm=260,
+    name="pong-marker-v2",
+    output_name="pong-marker-v2-a4-195x260mm.pdf",
+    print_only=True,
+    source_path=STANDARD_TARGET.source_path,
+    target_bottom_mm=18,
+    width_mm=195,
+)
+
+FALLBACK_A4_TARGET = TargetSpec(
+    height_mm=240,
+    name="pong-marker-v2",
+    output_name="pong-marker-v2-a4-180x240mm.pdf",
+    print_only=True,
+    source_path=STANDARD_TARGET.source_path,
+    target_bottom_mm=28,
+    width_mm=180,
+)
+
+TARGETS = (STANDARD_TARGET, MAX_A4_TARGET, FALLBACK_A4_TARGET)
 
 
 def draw_crop_marks(
@@ -75,22 +99,23 @@ def build_pdf(spec: TargetSpec) -> Path:
     )
     pdf.setAuthor("Pong WebAR")
 
-    pdf.setFillColor(HexColor("#111318"))
-    pdf.setFont("Helvetica-Bold", 16)
-    pdf.drawCentredString(PAGE_WIDTH / 2, 280 * mm, "MARCADOR DE REALIDADE AUMENTADA")
+    if not spec.print_only:
+        pdf.setFillColor(HexColor("#111318"))
+        pdf.setFont("Helvetica-Bold", 16)
+        pdf.drawCentredString(PAGE_WIDTH / 2, 280 * mm, "MARCADOR DE REALIDADE AUMENTADA")
 
-    pdf.setFillColor(HexColor("#353A43"))
-    pdf.setFont("Helvetica", 10)
-    pdf.drawCentredString(
-        PAGE_WIDTH / 2,
-        272 * mm,
-        "Imprima em tamanho real (escala 100%). Nao use ajustar a pagina.",
-    )
-    pdf.drawCentredString(
-        PAGE_WIDTH / 2,
-        266 * mm,
-        f"Tamanho final: {spec.width_mm} x {spec.height_mm} mm. Prefira papel fosco.",
-    )
+        pdf.setFillColor(HexColor("#353A43"))
+        pdf.setFont("Helvetica", 10)
+        pdf.drawCentredString(
+            PAGE_WIDTH / 2,
+            272 * mm,
+            "Imprima em tamanho real (escala 100%). Nao use ajustar a pagina.",
+        )
+        pdf.drawCentredString(
+            PAGE_WIDTH / 2,
+            266 * mm,
+            f"Tamanho final: {spec.width_mm} x {spec.height_mm} mm. Prefira papel fosco.",
+        )
 
     pdf.drawImage(
         str(spec.source_path),
@@ -101,16 +126,24 @@ def build_pdf(spec: TargetSpec) -> Path:
         preserveAspectRatio=True,
         mask="auto",
     )
-    draw_crop_marks(pdf, target_left, target_bottom, target_width, target_height)
-
-    pdf.setFillColor(HexColor("#353A43"))
-    pdf.setFont("Helvetica", 9)
-    pdf.drawCentredString(
-        PAGE_WIDTH / 2,
-        30 * mm,
-        "Aponte a camera para o marcador inteiro, com boa iluminacao e sem reflexos.",
-    )
-    pdf.drawCentredString(PAGE_WIDTH / 2, 24 * mm, f"Versao do target: {spec.name}")
+    if spec.print_only:
+        pdf.setFillColor(HexColor("#353A43"))
+        pdf.setFont("Helvetica", 7)
+        pdf.drawCentredString(
+            PAGE_WIDTH / 2,
+            7 * mm,
+            f"{spec.name} - {spec.width_mm} x {spec.height_mm} mm - imprimir em escala 100%",
+        )
+    else:
+        draw_crop_marks(pdf, target_left, target_bottom, target_width, target_height)
+        pdf.setFillColor(HexColor("#353A43"))
+        pdf.setFont("Helvetica", 9)
+        pdf.drawCentredString(
+            PAGE_WIDTH / 2,
+            30 * mm,
+            "Aponte a camera para o marcador inteiro, com boa iluminacao e sem reflexos.",
+        )
+        pdf.drawCentredString(PAGE_WIDTH / 2, 24 * mm, f"Versao do target: {spec.name}")
 
     pdf.showPage()
     pdf.save()
@@ -118,4 +151,5 @@ def build_pdf(spec: TargetSpec) -> Path:
 
 
 if __name__ == "__main__":
-    print(build_pdf(TARGET))
+    for target in TARGETS:
+        print(build_pdf(target))

@@ -21,3 +21,4 @@ Copie `template.md`, substitua os campos e adicione o ADR ao índice abaixo.
 ## Índice
 
 - [ADR-0001 — Distribuição do engine 8th Wall](0001-8th-wall-engine-distribution.md)
+- [ADR-0002 — Experimento híbrido de Image Target e World Tracking](0002-image-target-world-tracking-experiment.md)

@@ -10,7 +10,7 @@ import type {
 import type { XrEngineLoader } from './engine-loader'
 import type { ImageTargetDataLoader } from './image-target-data'
 import { createArRuntime } from './runtime'
-import type { ArRuntimeState } from './types'
+import type { ArRuntimeState, TrackingLabConfig, TrackingSnapshot } from './types'
 
 class FakeEngine implements XrEngine {
   readonly calls: string[] = []
@@ -32,9 +32,13 @@ class FakeEngine implements XrEngine {
     xrScene: () => ({ scene: this.scene }),
   }
   readonly XrController = {
-    configure: (options: { disableWorldTracking: boolean; imageTargetData: ImageTargetData[] }) => {
+    configure: (options: {
+      disableWorldTracking: boolean
+      imageTargetData: ImageTargetData[]
+      scale?: 'absolute' | 'responsive'
+    }) => {
       this.calls.push(
-        `xr.configure:${String(options.disableWorldTracking)}:${options.imageTargetData[0]?.name ?? ''}`,
+        `xr.configure:${String(options.disableWorldTracking)}:${options.imageTargetData[0]?.name ?? ''}${options.scale ? `:${options.scale}` : ''}`,
       )
     },
     pipelineModule: () => {
@@ -114,6 +118,12 @@ class FakeEngine implements XrEngine {
     }
   }
 
+  emitUpdate(): void {
+    for (const module of this.modules) {
+      module.onUpdate?.({})
+    }
+  }
+
   private lifecycle(): CameraPipelineModule | undefined {
     return this.modules.find((module) => module.name === 'webar-runtime-lifecycle')
   }
@@ -170,6 +180,16 @@ function setup() {
   const states: ArRuntimeState[] = []
   runtime.subscribe((state) => states.push(state))
   return { engine, imageTargetLoader, loader, runtime, states }
+}
+
+const worldRelativeLabConfig: TrackingLabConfig = {
+  cameraDistanceMeters: 1.25,
+  enabled: true,
+  fieldLengthMeters: 1.5,
+  mode: 'world-relative',
+  targetHeightMeters: 0.26,
+  targetWidthMeters: 0.195,
+  trialScenario: 'movement',
 }
 
 afterEach(() => {
@@ -380,6 +400,50 @@ describe('createArRuntime', () => {
     )
     expect(states.filter(({ status }) => status === 'target-found')).toHaveLength(2)
     expect(states.at(-1)).toEqual({ status: 'target-found', targetName: 'pong-marker-v2' })
+    runtime.dispose()
+  })
+
+  it('keeps the calibration field visible after image loss while world tracking is normal', async () => {
+    vi.useFakeTimers()
+    const { engine, runtime } = setup()
+    const snapshots: TrackingSnapshot[] = []
+    runtime.configureTrackingLab(worldRelativeLabConfig)
+    runtime.subscribeTracking((snapshot) => snapshots.push(snapshot))
+    await runtime.preload()
+    const started = runtime.start(document.createElement('canvas'))
+    engine.emitCameraStatus('hasVideo')
+    await started
+
+    expect(engine.calls).toContain('xr.configure:false:pong-marker-v2:responsive')
+    engine.emitPipelineEvent('reality.trackingstatus', { reason: 'UNDEFINED', status: 'NORMAL' })
+    engine.emitPipelineEvent('reality.imagefound', {
+      name: 'pong-marker-v2',
+      position: { x: 1, y: 2, z: 3 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      scale: 2,
+      scaledHeight: 1,
+      scaledWidth: 0.75,
+    })
+    const root = engine.scene.getObjectByName('tracked-experience-root')
+    expect(root?.visible).toBe(true)
+
+    engine.emitPipelineEvent('reality.imagelost', { name: 'pong-marker-v2' })
+    vi.advanceTimersByTime(300)
+
+    expect(root?.visible).toBe(true)
+    expect(snapshots.at(-1)).toMatchObject({ targetStatus: 'lost', worldStatus: 'normal' })
+    runtime.dispose()
+  })
+
+  it('configures absolute scale for the absolute-world laboratory mode', async () => {
+    const { engine, runtime } = setup()
+    runtime.configureTrackingLab({ ...worldRelativeLabConfig, mode: 'world-absolute' })
+    await runtime.preload()
+    const started = runtime.start(document.createElement('canvas'))
+    engine.emitCameraStatus('hasVideo')
+    await started
+
+    expect(engine.calls).toContain('xr.configure:false:pong-marker-v2:absolute')
     runtime.dispose()
   })
 

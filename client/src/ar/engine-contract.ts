@@ -30,6 +30,7 @@ export interface CameraPipelineModule {
   onRemove?(): void
   onResume?(): void
   onStart?(event: unknown): void
+  onUpdate?(event: unknown): void
   onVideoSizeChange?(event: { videoHeight: number; videoWidth: number }): void
 }
 
@@ -47,7 +48,11 @@ export interface XrEngine {
     device(): { MOBILE: unknown }
   }
   XrController: {
-    configure(options: { disableWorldTracking: boolean; imageTargetData: ImageTargetData[] }): void
+    configure(options: {
+      disableWorldTracking: boolean
+      imageTargetData: ImageTargetData[]
+      scale?: 'absolute' | 'responsive'
+    }): void
     pipelineModule(): CameraPipelineModule
   }
   addCameraPipelineModules(modules: CameraPipelineModule[]): void

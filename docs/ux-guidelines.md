@@ -30,6 +30,13 @@ sem bloquear rotação. Quando as proporções divergem, o feed funcional perman
 inteiro e centralizado. O preenchimento decorativo permanece pausado enquanto o
 target é procurado e só aparece, escurecido e sem blur, depois da aquisição.
 
+O laboratório interno `?trackingLab=1` acrescenta controles compactos para
+target, campo, distância, cenário e modo de tracking. Esses controles ficam
+bloqueados enquanto a câmera está ativa para evitar ensaios com configuração
+ambígua. Em `world-absolute`, a interface orienta um movimento lento para frente
+e para trás durante a estimativa de escala. Quando uma reaquisição excede os
+limites seguros, o campo não salta: a interface solicita recalibração explícita.
+
 ## Estados obrigatórios de interface
 
 - Carregamento inicial.
@@ -68,6 +75,7 @@ target é procurado e só aparece, escurecido e sem blur, depois da aquisição.
 - Layout e gesto de cada raquete.
 - Necessidade de onboarding ilustrado.
 - Refinamento do comportamento visual quando o target é perdido; ocultar o
-  conteúdo imediatamente é a política provisória da validação inicial.
+  conteúdo após 300 ms permanece a política do fluxo público; a retenção por
+  SLAM existe somente no laboratório até aprovação do gate experimental.
 - Estratégia para dois jogadores e entrada em sala.
 - Critérios de sucesso de usabilidade.

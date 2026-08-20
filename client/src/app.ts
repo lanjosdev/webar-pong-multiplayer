@@ -1,4 +1,5 @@
 import { createDefaultArRuntime, type ArRuntime, type ArRuntimeState } from './ar'
+import { createTrackingLabUi } from './tracking-lab-ui'
 
 export interface AppHandle {
   dispose(): void
@@ -6,6 +7,7 @@ export interface AppHandle {
 
 export interface MountAppOptions {
   runtime?: ArRuntime
+  trackingLabEnabled?: boolean
 }
 
 interface StateContent {
@@ -121,6 +123,9 @@ function isCameraVisible(state: ArRuntimeState): boolean {
 
 export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppHandle {
   const runtime = options.runtime ?? createDefaultArRuntime()
+  const trackingLabEnabled =
+    options.trackingLabEnabled ??
+    new URLSearchParams(window.location.search).get('trackingLab') === '1'
   const shell = document.createElement('main')
   shell.className = 'app-shell'
 
@@ -168,6 +173,10 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
   cameraHud.append(cameraStatus, stopAction)
   overlay.append(panel, cameraHud)
   shell.append(canvas, overlay)
+  const trackingLabUi = trackingLabEnabled ? createTrackingLabUi(runtime, window) : null
+  if (trackingLabUi) {
+    shell.append(trackingLabUi.element)
+  }
   root.replaceChildren(shell)
 
   let disposed = false
@@ -176,6 +185,12 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
     const content = contentForState(nextState)
     const cameraVisible = isCameraVisible(nextState)
     const sessionRunning = isCameraVisible(nextState) && nextState.status !== 'requesting-camera'
+    const trialEnabled = [
+      'camera-active',
+      'searching-target',
+      'target-found',
+      'target-lost',
+    ].includes(nextState.status)
 
     shell.dataset['arState'] = nextState.status
     canvas.hidden = !cameraVisible
@@ -183,6 +198,7 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
     cameraHud.hidden = !cameraVisible
     cameraStatus.textContent = content.title
     stopAction.hidden = !sessionRunning
+    trackingLabUi?.setSessionState(cameraVisible, trialEnabled)
 
     eyebrow.textContent = content.eyebrow
     title.textContent = content.title
@@ -215,6 +231,7 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
       primaryAction.removeEventListener('click', handlePrimaryAction)
       stopAction.removeEventListener('click', handleStop)
       unsubscribe()
+      trackingLabUi?.dispose()
       runtime.dispose()
       shell.remove()
       disposed = true

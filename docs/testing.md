@@ -53,9 +53,15 @@ aprovar o gate de Image Tracking.
 
 ## Validação móvel do Image Target `pong-marker-v2`
 
-Imprima `output/pdf/pong-marker-v2-a4-150x200mm.pdf` em folha A4, tamanho real ou
-escala 100%, sem usar “ajustar à página”. Confirme com régua que a imagem mede
-150 x 200 mm. Em cada aparelho:
+Imprima em folha A4, tamanho real ou escala 100%, sem usar “ajustar à página”:
+
+- baseline: `output/pdf/pong-marker-v2-a4-150x200mm.pdf`;
+- máxima: `output/pdf/pong-marker-v2-a4-195x260mm.pdf`;
+- fallback: `output/pdf/pong-marker-v2-a4-180x240mm.pdf`.
+
+Confirme as dimensões com régua. Rejeite a impressão máxima se houver recorte ou
+variação superior a 1 mm e use o fallback. Monte o papel sobre base rígida,
+plana e fosca. Em cada aparelho:
 
 1. enquadre o marcador inteiro até a HUD indicar `Target encontrado`;
 2. mova o aparelho em portrait e landscape e observe posição, rotação e escala
@@ -64,8 +70,71 @@ escala 100%, sem usar “ajustar à página”. Confirme com régua que a imagem
    reenquadramento e que o objeto é ocultado;
 4. reenquadre e confirme a reaquisição sem recarregar a página;
 5. alterne background e foreground e confirme nova aquisição;
-6. teste luz difusa, ângulos oblíquos e distâncias variadas, sem fixar ainda um
-   limite quantitativo de aprovação.
+6. teste luz difusa, ângulos oblíquos e as distâncias formais do laboratório.
+
+## Laboratório A4 de tracking e campo
+
+Abra a aplicação com `?trackingLab=1`. Antes de iniciar a câmera, selecione o
+aparelho, target físico, campo, modo, distância e cenário; a configuração permanece
+bloqueada durante a sessão. `Iniciar ensaio` começa a coleta e `Finalizar e
+exportar` baixa um JSON contendo contexto, amostras, perdas e métricas.
+
+Os modos são:
+
+- `Image Tracking`: baseline com World Tracking desligado;
+- `Target + SLAM relativo`: target define origem e proporção física; a âncora
+  mundial continua visível após `imagelost`;
+- `Target + SLAM absoluto`: campo em metros, com movimento inicial para estimar
+  escala.
+
+### Preparação física
+
+- Target centralizado no chão, com eixo longo alinhado ao comprimento do campo.
+- Câmera aproximadamente a 1,2 m de altura.
+- Estações horizontais marcadas em 0,75, 1,0, 1,25 e 1,5 m; 2,0 m somente para
+  diagnóstico.
+- Iluminação difusa, sem reflexo ou sombra móvel sobre o target.
+- Marcas de fita métrica nos centros das extremidades e cantos físicos esperados.
+
+### Etapa 1 — Image Tracking isolado
+
+Compare 150 x 200 e 195 x 260 mm em cada estação e aparelho. Para cada
+combinação, execute dez aquisições, três movimentos lentos de 60 s com arco
+lateral aproximado de mais ou menos 30 graus e deslocamento longitudinal de
+mais ou menos 20 cm, e cinco oclusões de um segundo. Crie e teste um v3 somente
+se o v2 maximizado não atingir 9 de 10 aquisições em até 3 s a 1,5 m nos dois
+aparelhos ou perder tracking sustentado com a imagem inteira visível.
+
+### Etapa 2 — Campos de calibração
+
+Teste 1,0 x 0,5, 1,5 x 0,75 e 2,0 x 1,0 m com o melhor target. Para cada campo,
+encontre a menor estação em que toda a geometria caiba no viewport com 5% de
+margem. Meça 15 s com câmera parada e repita o movimento lento. Execute a
+triagem em portrait e repita o candidato vencedor em landscape.
+
+### Etapa 3 — SLAM e escala
+
+Repita os campos em `world-relative` e depois `world-absolute`. Confirme que
+`imagelost` não oculta o campo com SLAM normal, que reaquisições pequenas são
+suaves, que diferenças grandes solicitam `Recalibrar campo` e que um estado
+`LIMITED` sustentado congela a calibração, orienta o reenquadramento e marca o
+ensaio como falha. Compare as extremidades virtuais com as marcas físicas no chão.
+
+### Critérios de aprovação do experimento
+
+O maior campo aprovado nos dois aparelhos precisa:
+
+- operar a no máximo 1,5 m e caber com 5% de margem;
+- adquirir em até 3 s em pelo menos 9 de 10 tentativas;
+- não desaparecer em três ensaios normais de 2 min com SLAM;
+- manter jitter P95 até 1% e drift até 2% do comprimento do campo;
+- completar cinco reaquisições em até 2 s sem salto visual;
+- não apresentar degradação progressiva evidente em 10 min.
+
+FPS e comportamento térmico devem ser registrados, mas não possuem budget de
+produto aprovado. Se nenhum campo passar, mantenha o gate aberto e avalie, em
+ordem, posição do target, textura não repetitiva, múltiplos targets e somente
+depois ChArUco/AprilTag.
 
 ### Resultado qualitativo do v1
 
@@ -137,19 +206,22 @@ Vídeo/capturas:
 Problemas e severidade:
 ```
 
-Relatórios detalhados podem ficar em `docs/test-reports/` quando começarem os
-testes. O `PROJECT_PLAN.md` deve guardar apenas o estado do gate.
+Consolide os resultados em `docs/test-reports/tracking-lab-a4.md` e mantenha os
+JSONs exportados como evidência vinculada ao relatório. O `PROJECT_PLAN.md`
+deve guardar apenas o estado do gate.
 
-## Critérios quantitativos pendentes
+## Budgets quantitativos pendentes
 
-Antes de validar a fase 1, definir:
+Após coletar a evidência do laboratório, ainda é necessário definir:
 
 - FPS mínimo e alvo por classe de aparelho;
-- tempo aceitável de carregamento e aquisição;
-- tempo aceitável de reaquisição;
-- tolerância a jitter/drift em cenários definidos;
+- tempo aceitável de carregamento da aplicação;
 - duração do teste térmico;
 - limite de degradação ou falhas ao longo da sessão.
+
+Aquisição, reaquisição, jitter e drift já possuem limites específicos para o
+experimento A4 descrito acima. Eles não se tornam automaticamente budgets do
+produto final sem a validação nos dois aparelhos.
 
 Não escolher esses números apenas por conveniência técnica; relacioná-los à
 experiência do usuário e à matriz real de aparelhos.

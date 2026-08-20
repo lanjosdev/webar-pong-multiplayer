@@ -18,8 +18,11 @@ inventário e os hashes SHA-256 são comparados byte a byte com o pacote instala
 O bootstrap carrega `xr.js` pelo `BASE_URL` do Vite e pré-carrega o chunk
 `slam`. A pipeline registra, nesta ordem, `GlTextureRenderer`, `XrController`,
 `Threejs`, o módulo local do target e o módulo de lifecycle.
-`disableWorldTracking: true` e o `imageTargetData` são configurados antes de
-criar a pipeline e executar o engine. `Threejs` não renderiza uma segunda
+No modo público, `disableWorldTracking: true` e o `imageTargetData` são
+configurados antes de criar a pipeline e executar o engine. O laboratório
+opt-in `?trackingLab=1`, aceito pelo ADR-0002, também pode iniciar os modos
+`world-relative` e `world-absolute`; essa escolha ocorre antes de criar a
+pipeline e não muda durante uma sessão. `Threejs` não renderiza uma segunda
 textura de câmera; o feed permanece responsabilidade de `GlTextureRenderer`.
 
 Não use como referência de implementação APIs, credenciais ou fluxo de deploy
@@ -31,7 +34,8 @@ exclusivos da plataforma hospedada legada. Consulte
 - O target físico define origem, orientação e escala da experiência.
 - O campo poderá ultrapassar os limites físicos do target.
 - Android e iOS são plataformas prioritárias.
-- World Tracking/SLAM é uma opção futura, não parte da primeira implementação.
+- World Tracking/SLAM permanece fora do fluxo público e existe como protótipo
+  mensurável somente no laboratório da Fase 1.
 - Portrait e landscape são suportados responsivamente; a rotação não é
   bloqueada.
 - A câmera só é solicitada após o usuário tocar em `Iniciar experiência`.
@@ -46,7 +50,8 @@ exclusivos da plataforma hospedada legada. Consulte
   mantém o backing buffer em alta resolução, enquanto propriedades CSS
   protegidas preservam o tamanho lógico calculado e evitam ampliação pelo DPR.
 - O target padrão confirmado é `pong-marker-v2`, planar, 3:4 e impresso em
-  150 x 200 mm numa folha A4 em escala 100%; papel fosco é recomendado. O teste
+  150 x 200, 195 x 260 ou 180 x 240 mm numa folha A4 em escala 100%; papel
+  fosco e base rígida são recomendados. O teste
   físico qualitativo apresentou resultado muito melhor que o v1. O resultado
   anterior permanece documentado, mas os assets do v1 foram removidos do
   repositório e do build.
@@ -62,22 +67,25 @@ exclusivos da plataforma hospedada legada. Consulte
 - `camera-denied`: permissão ausente com orientação de recuperação.
 - `searching-target`: câmera ativa, aguardando o marcador.
 - `target-found`: pose válida e conteúdo disponível.
-- `target-lost`: perda confirmada após tolerância de 300 ms; conteúdo ocultado e
-  orientação de reenquadramento exibida.
+- `target-lost`: perda confirmada após tolerância de 300 ms. No modo público e
+  em `image-only`, o conteúdo é ocultado. Nos modos híbridos, a geometria
+  permanece na âncora mundial e a observação do target muda para `lost`.
 - `recovering`: tentativa de reaquisição ou retomada de lifecycle.
 - `fatal-error`: falha não recuperável com ação clara para o usuário.
 
 Os nomes são conceituais; a implementação pode usar outro modelo desde que
 cubra os mesmos estados observáveis.
 
-Todos esses estados possuem representação observável. Enquanto o target está
-perdido, o objeto de referência é ocultado e a interface orienta o
-reenquadramento; essa política é provisória até a validação em aparelho.
+Todos esses estados possuem representação observável. Lifecycle da sessão e
+observações de tracking são canais separados, permitindo representar target
+perdido, SLAM normal e campo ainda visível simultaneamente.
 
 ## Separação de responsabilidades
 
 - O adaptador 8th Wall converte dados do SDK para uma pose interna conhecida.
 - A raiz AR posiciona o conteúdo Three.js.
+- O laboratório recebe snapshots independentes de pose, visibilidade do target,
+  status do SLAM, FPS e cantos do campo; a UI não acessa o SDK.
 - O game core não recebe ruído de tracking nem depende do target.
 - UI reage aos estados do runtime, sem acessar detalhes internos do SDK.
 
@@ -101,9 +109,27 @@ ao voltar ao primeiro plano e usa `stop()` no encerramento. Resize,
 recalculam o canvas contido e seu backing buffer; os listeners e módulos são
 removidos de forma idempotente. O vídeo decorativo é criado em `onAttach`, usa o
 stream já fornecido pelo engine, só reproduz após `imagefound` e é pausado,
-desconectado e removido no teardown. Uma perda do target só é publicada e oculta
-o conteúdo após 300 ms; `imagefound` ou `imageupdated` nesse intervalo cancela a
-perda transitória.
+desconectado e removido no teardown. Uma perda do target só é publicada após
+300 ms; `imagefound` ou `imageupdated` nesse intervalo cancela a perda
+transitória. Nos modos híbridos, a raiz permanece ancorada no espaço mundial.
+Uma reaquisição com diferença de até 2% do campo e 2 graus é interpolada em
+750 ms; diferenças maiores exigem recalibração. SLAM `LIMITED` por mais de
+1,5 s cancela qualquer correção em andamento, bloqueia recalibração, orienta o
+reenquadramento e é registrado como falha do ensaio.
+
+## Laboratório de tracking
+
+`?trackingLab=1` habilita identificação do aparelho e seletores para target físico, campo, distância,
+cenário e os modos `image-only`, `world-relative` e `world-absolute`. A
+configuração fica bloqueada durante uma sessão. Ensaios podem ser iniciados e
+finalizados sem recarregar; o resultado é exportado em JSON com amostras brutas
+e métricas derivadas.
+
+Os campos são apenas geometria de calibração 2:1: 1,0 x 0,5 m, 1,5 x 0,75 m e
+2,0 x 1,0 m. O modo relativo dimensiona a geometria pela proporção entre o
+target físico declarado e a geometria reportada pelo engine. O modo absoluto
+usa metros e orienta o usuário a mover o aparelho lentamente para frente e para
+trás enquanto a escala é estimada.
 
 ## Matriz de validação do tracking
 
@@ -119,18 +145,22 @@ Para cada aparelho selecionado, registrar:
 - aquecimento, throttling ou falhas observadas;
 - gravação ou captura quando possível.
 
-## Critérios ainda TBD
+## Critérios definidos para o experimento
 
-- Unidade e escala física usadas pela cena.
-- Distâncias e ângulos formais da matriz de teste.
-- Limite aceitável de jitter e drift.
-- Tempo máximo aceitável de aquisição e reaquisição.
-- Refinamento da política provisória de ocultar e orientar após 300 ms de perda.
-- Condições que justificariam combinar Image Tracking e SLAM.
+- Distâncias operacionais: 0,75, 1,0, 1,25 e 1,5 m; 2,0 m é diagnóstico.
+- Aquisição: pelo menos 9 de 10 em até 3 s.
+- Jitter P95 nos extremos: até 1% do comprimento do campo.
+- Drift acumulado: até 2% do comprimento do campo.
+- Reaquisição: cinco tentativas em até 2 s, sem salto visual.
+- O maior campo deve caber com 5% de margem a no máximo 1,5 m.
 
-## Gate antes de adicionar SLAM
+FPS mínimo, budget térmico e duração final de produção continuam TBD; o ensaio
+de 10 minutos coleta a evidência necessária para defini-los.
 
-World Tracking/SLAM só deve ser proposto após:
+## Gate para adotar SLAM no fluxo público
+
+O protótipo foi autorizado pelo usuário e documentado no ADR-0002 após a
+limitação qualitativa ser reproduzida. A adoção no fluxo público ainda exige:
 
 1. medir o comportamento do Image Tracking isolado;
 2. reproduzir uma limitação relevante ao produto;

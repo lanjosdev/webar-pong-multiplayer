@@ -1,6 +1,6 @@
 # Referência oficial — 8th Wall
 
-Última verificação: 2026-08-19. Distribuição do projeto: engine binário `1.0.0`.
+Última verificação: 2026-08-20. Distribuição do projeto: engine binário `1.0.0`.
 
 ## Estado relevante da plataforma
 
@@ -21,6 +21,9 @@ O ADR-0001 escolheu o engine binário distribuído na versão `1.0.0`. A escolha
 preserva SLAM futuro, mas traz restrições de licença e atribuição. A integração
 com Vite copia e verifica a árvore `dist` original, carrega `xr.js` localmente e
 pré-carrega apenas o chunk `slam`; o bootstrap mantém World Tracking desativado.
+O laboratório opt-in `?trackingLab=1` pode habilitá-lo para comparar
+`world-relative` e `world-absolute`, conforme o ADR-0002, sem mudar o fluxo
+público. A configuração `scale: 'absolute'` é usada somente no segundo modo.
 Não suponha que APIs ou exemplos do produto hospedado legado funcionem nessa
 distribuição.
 

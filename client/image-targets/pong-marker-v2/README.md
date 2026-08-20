@@ -6,12 +6,22 @@ de tracking ainda depende de escala, orientação, perda, reaquisição e
 estabilidade.
 
 - Tipo: planar, proporção nativa 3:4 sem crop.
-- Dimensão física de referência: 150 x 200 mm.
-- Impressão: folha A4, escala 100%, preferencialmente em papel fosco.
+- Dimensões físicas experimentais: 150 x 200 mm (baseline), 195 x 260 mm
+  (máxima) e 180 x 240 mm (fallback para impressoras que recortem a máxima).
+- Impressão: folha A4, escala 100%, preferencialmente em papel fosco e montada
+  sobre base rígida e plana.
 - Fonte canônica: `source/pong-marker-v2.png`, 1086 x 1448 px.
 - SHA-256 da fonte:
   `C1151766C96783F857E7CB63B1F093D7CC4E00225B0C9F2665069A9891678BC7`.
-- PDF de impressão: `../../../output/pdf/pong-marker-v2-a4-150x200mm.pdf`.
+- PDFs de impressão:
+  - `../../../output/pdf/pong-marker-v2-a4-150x200mm.pdf`;
+  - `../../../output/pdf/pong-marker-v2-a4-195x260mm.pdf`;
+  - `../../../output/pdf/pong-marker-v2-a4-180x240mm.pdf`.
+
+Nos PDFs maximizados, confirme com régua a dimensão impressa. Rejeite a variante
+195 x 260 mm se qualquer borda estiver cortada ou se a medida variar mais de
+1 mm; use então o fallback 180 x 240 mm. O mesmo conjunto digital de target é
+usado para isolar a influência do tamanho físico.
 
 A arte foi criada com a ferramenta integrada de geração de imagens, usando o
 logotipo fornecido pelo usuário como referência. O prompt pediu composição Pong

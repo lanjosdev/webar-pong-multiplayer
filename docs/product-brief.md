@@ -60,6 +60,11 @@ Consulte `docs/references/8th-wall.md`.
 - Estabilidade além das dimensões físicas da imagem.
 - Desempenho em Android e iPhone.
 
+O experimento ativo usa uma única folha A4 e compara campos de calibração 2:1
+de 1,0 x 0,5, 1,5 x 0,75 e 2,0 x 1,0 m, com distância operacional máxima de
+1,5 m. Esses tamanhos são candidatos provisórios; o maior campo só será adotado
+após passar os critérios nos dois aparelhos.
+
 ## Objetivos da validação do jogo local
 
 - Escala e posicionamento relativos ao target.
@@ -88,7 +93,8 @@ avaliados após medições reais de latência e instabilidade.
 - Servidor ou protocolo multiplayer.
 - Autenticação e persistência.
 - Escala horizontal do backend.
-- Uso antecipado de World Tracking/SLAM.
+- Adoção de World Tracking/SLAM no fluxo público antes da evidência do
+  laboratório aceito pelo ADR-0002.
 - Physics engine.
 - Aplicativo nativo.
 

@@ -45,8 +45,9 @@ Cada cliente mantém localmente: câmera, tracking AR, pose e renderização.
 
 Na implementação atual, `client/src/ar/` contém loaders do engine e do manifesto
 do target, o contrato mínimo validado do SDK, o runtime de câmera e um módulo de
-cena responsável apenas pela raiz rastreada e pelo objeto de referência. A UI
-consome estados discriminados e intenções de lifecycle; `XR8`, eventos de pose e
+cena responsável pela raiz rastreada, pelo objeto de referência e pela geometria
+de calibração opt-in. A UI consome estados discriminados de lifecycle e, no
+laboratório, snapshots internos de tracking; `XR8`, eventos crus de pose e
 Three.js não atravessam essa fronteira.
 
 O preenchimento decorativo das áreas externas ao canvas AR reutiliza o
@@ -107,7 +108,8 @@ a fase multiplayer justificar essa fronteira.
 - Não criar backend na fase 1 ou 2.
 - Manter comandos e estado do game core serializáveis o suficiente para uma
   futura camada de rede, sem projetar todo o protocolo agora.
-- Antes de adotar SLAM, registrar medições e um ADR comparando alternativas.
+- O ADR-0002 autoriza um protótipo opt-in com SLAM; a adoção no fluxo público
+  ainda depende das medições documentadas.
 - Antes do multiplayer, criar um ADR para Socket.IO versus WebSocket puro.
 
 ## Decisões que exigem ADR

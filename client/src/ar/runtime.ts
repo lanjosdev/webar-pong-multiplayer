@@ -8,11 +8,19 @@ import { calculateCameraCanvasLayout } from './camera-canvas-layout'
 import type { XrEngineLoader } from './engine-loader'
 import type { ImageTargetDataLoader } from './image-target-data'
 import {
-  createImageTargetModule,
+  createImageTargetController,
+  type ImageTargetController,
   installThreeGlobal,
   type ThreeGlobalHandle,
 } from './image-target-module'
-import type { ArRuntime, ArRuntimeListener, ArRuntimeState } from './types'
+import type {
+  ArRuntime,
+  ArRuntimeListener,
+  ArRuntimeState,
+  TrackingLabConfig,
+  TrackingSnapshot,
+  TrackingSnapshotListener,
+} from './types'
 
 const LIFECYCLE_MODULE_NAME = 'webar-runtime-lifecycle'
 
@@ -44,6 +52,7 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
   const environmentIssue =
     options.isEnvironmentSupported ?? (() => defaultEnvironmentIssue(options.window))
   const listeners = new Set<ArRuntimeListener>()
+  const trackingListeners = new Set<TrackingSnapshotListener>()
   let state: ArRuntimeState = { status: 'booting' }
   let engine: XrEngine | null = null
   let imageTargetData: ImageTargetData | null = null
@@ -52,17 +61,46 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
   let settleStart: ((error?: Error) => void) | null = null
   let modules: CameraPipelineModule[] = []
   let threeGlobal: ThreeGlobalHandle | null = null
+  let imageTargetController: ImageTargetController | null = null
   let canvas: HTMLCanvasElement | null = null
   let cameraBackdrop: HTMLVideoElement | null = null
   let running = false
   let disposed = false
   let trackedTargetName: string | null = null
   let videoSize: { height: number; width: number } | null = null
+  let trackingLabConfig: TrackingLabConfig = {
+    cameraDistanceMeters: 1.25,
+    enabled: false,
+    fieldLengthMeters: 1.5,
+    mode: 'image-only',
+    targetHeightMeters: 0.2,
+    targetWidthMeters: 0.15,
+    trialScenario: 'acquisition',
+  }
+  let trackingSnapshot: TrackingSnapshot = {
+    fieldCorners: [],
+    framesPerSecond: null,
+    metersPerSceneUnit: 1,
+    recalibrationRequired: false,
+    targetPose: null,
+    targetStatus: 'scanning',
+    timestampMs: Date.now(),
+    worldLimitedExceeded: false,
+    worldReason: null,
+    worldStatus: 'unavailable',
+  }
 
   const emit = (nextState: ArRuntimeState) => {
     state = nextState
     for (const listener of listeners) {
       listener(state)
+    }
+  }
+
+  const emitTracking = (nextSnapshot: TrackingSnapshot) => {
+    trackingSnapshot = nextSnapshot
+    for (const listener of trackingListeners) {
+      listener(trackingSnapshot)
     }
   }
 
@@ -270,6 +308,7 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
 
     threeGlobal?.dispose()
     threeGlobal = null
+    imageTargetController = null
     removeCameraBackdrop()
 
     running = false
@@ -306,6 +345,20 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
   options.document.addEventListener('visibilitychange', handleVisibilityChange)
 
   const runtime: ArRuntime = {
+    configureTrackingLab(config) {
+      if (disposed) {
+        throw new Error('The AR runtime has been disposed')
+      }
+      if (running) {
+        throw new Error('Encerre a sessão antes de alterar a configuração do laboratório.')
+      }
+      trackingLabConfig = { ...config }
+    },
+
+    recalibrateTracking() {
+      imageTargetController?.recalibrate()
+    },
+
     async preload() {
       if (disposed) {
         throw new Error('The AR runtime has been disposed')
@@ -389,23 +442,32 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
       startPromise = pendingStart
 
       try {
-        engine.XrController.configure({
+        const xrOptions: Parameters<XrEngine['XrController']['configure']>[0] = {
           disableWorldTracking: true,
           imageTargetData: [imageTargetData],
-        })
+        }
+        if (trackingLabConfig.enabled) {
+          xrOptions.disableWorldTracking = trackingLabConfig.mode === 'image-only'
+          xrOptions.scale = trackingLabConfig.mode === 'world-absolute' ? 'absolute' : 'responsive'
+        }
+        engine.XrController.configure(xrOptions)
         engine.Threejs.configure({ renderCameraTexture: false })
         threeGlobal = installThreeGlobal(options.window)
+        imageTargetController = createImageTargetController({
+          config: trackingLabConfig,
+          engine,
+          now: options.window.performance.now.bind(options.window.performance),
+          onFound: handleTargetFound,
+          onLost: handleTargetLost,
+          onScanning: handleTargetScanning,
+          onTrackingSnapshot: emitTracking,
+          targetName: imageTargetData.name,
+        })
         modules = [
           engine.GlTextureRenderer.pipelineModule(),
           engine.XrController.pipelineModule(),
           engine.Threejs.pipelineModule(),
-          createImageTargetModule({
-            engine,
-            onFound: handleTargetFound,
-            onLost: handleTargetLost,
-            onScanning: handleTargetScanning,
-            targetName: imageTargetData.name,
-          }),
+          imageTargetController.module,
           createLifecycleModule(),
         ]
         engine.addCameraPipelineModules(modules)
@@ -463,6 +525,12 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
       return () => listeners.delete(listener)
     },
 
+    subscribeTracking(listener) {
+      trackingListeners.add(listener)
+      listener(trackingSnapshot)
+      return () => trackingListeners.delete(listener)
+    },
+
     dispose() {
       if (disposed) {
         return
@@ -475,6 +543,7 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
       engine = null
       emit({ status: 'disposed' })
       listeners.clear()
+      trackingListeners.clear()
     },
   }
 
