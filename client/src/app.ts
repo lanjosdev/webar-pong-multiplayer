@@ -276,7 +276,7 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
 
   const touchHint = document.createElement('span')
   touchHint.className = 'touch-hint'
-  touchHint.textContent = 'Arraste para mover a raquete azul'
+  touchHint.textContent = 'Arraste para mover a raquete'
 
   panel.append(eyebrow, title, status, primaryAction)
   cameraHud.append(cameraStatus, stopAction)

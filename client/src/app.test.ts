@@ -292,6 +292,7 @@ describe('mountApp', () => {
     runtime.emit({ status: 'target-found', targetName: 'pong-marker-v2' })
     pong.emit({ phase: 'playing', trackingSafe: true })
     expect(root.querySelector<HTMLElement>('.game-prompt')?.hidden).toBe(true)
+    expect(root.querySelector('.touch-hint')?.textContent).toBe('Arraste para mover a raquete')
 
     Object.defineProperty(document.documentElement, 'clientWidth', {
       configurable: true,
