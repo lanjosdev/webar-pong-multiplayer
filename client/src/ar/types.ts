@@ -16,7 +16,7 @@ export type ArRuntimeState =
 export type ArRuntimeListener = (state: ArRuntimeState) => void
 
 export type TrackingMode = 'image-only' | 'world-absolute' | 'world-relative'
-export type FieldLengthMeters = 1 | 1.5 | 2
+export type FieldLengthMeters = 1
 export type CameraDistanceMeters = 0.75 | 1 | 1.25 | 1.5 | 2
 export type TrialScenario = 'acquisition' | 'movement' | 'reacquisition' | 'stationary' | 'thermal'
 
@@ -51,10 +51,47 @@ export interface TrackingTargetPose {
 
 export type WorldTrackingStatus = 'limited' | 'normal' | 'unavailable'
 export type TargetTrackingStatus = 'lost' | 'scanning' | 'visible'
+export type AnchorStatus = 'aligned' | 'frozen' | 'reanchoring' | 'uncalibrated' | 'validating'
+export type ImageTrackingEventKind = 'found' | 'lost' | 'scanning' | 'updated'
+
+export interface ImageTrackingEventCounts {
+  found: number
+  lost: number
+  updated: number
+}
+
+export type TrackingTimelineEventKind =
+  | 'anchor-state'
+  | 'image-found'
+  | 'image-lost'
+  | 'image-scanning'
+  | 'image-updated'
+  | 'world-status'
+
+export interface TrackingTimelineEvent {
+  anchorAngularErrorDegrees: number | null
+  anchorStatus: AnchorStatus
+  anchorTranslationErrorMeters: number | null
+  candidateSampleCount: number
+  kind: TrackingTimelineEventKind
+  pose: TrackingTargetPose | null
+  sequence: number
+  targetName: string | null
+  timestampMs: number
+  worldStatus: WorldTrackingStatus
+}
 
 export interface TrackingSnapshot {
+  anchorAngularErrorDegrees: number | null
+  anchorStatus: AnchorStatus
+  anchorTranslationErrorMeters: number | null
+  automaticReanchorCount: number
+  candidateSampleCount: number
   fieldCorners: TrackingVector3[]
   framesPerSecond: number | null
+  imageEventCounts: ImageTrackingEventCounts
+  lastImageEvent: ImageTrackingEventKind | null
+  lastImageEventAtMs: number | null
   metersPerSceneUnit: number
   recalibrationRequired: boolean
   targetPose: TrackingTargetPose | null
@@ -66,6 +103,7 @@ export interface TrackingSnapshot {
 }
 
 export type TrackingSnapshotListener = (snapshot: TrackingSnapshot) => void
+export type TrackingTimelineEventListener = (event: TrackingTimelineEvent) => void
 
 export interface ArRuntime {
   configureTrackingLab(config: TrackingLabConfig): void
@@ -76,5 +114,6 @@ export interface ArRuntime {
   stop(): void
   subscribe(listener: ArRuntimeListener): () => void
   subscribeTracking(listener: TrackingSnapshotListener): () => void
+  subscribeTrackingEvents(listener: TrackingTimelineEventListener): () => void
   dispose(): void
 }

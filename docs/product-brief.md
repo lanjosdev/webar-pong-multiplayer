@@ -22,6 +22,8 @@ como referência de posição, orientação e escala, não como limite visual do
 - Foco em navegadores mobile Android e iOS.
 - Layout responsivo em portrait e landscape, preservando a câmera como área
   principal da experiência.
+- Campo do Pong definido em 1,0 x 0,5 m; campos maiores não fazem mais parte
+  da experiência nem da matriz ativa de validação.
 - Evolução obrigatória por fases: WebAR, Pong local e multiplayer.
 - Multiplayer não faz parte das duas primeiras fases.
 - Cada aparelho executará seu próprio tracking; câmera e pose AR não trafegam
@@ -60,10 +62,10 @@ Consulte `docs/references/8th-wall.md`.
 - Estabilidade além das dimensões físicas da imagem.
 - Desempenho em Android e iPhone.
 
-O experimento ativo usa uma única folha A4 e compara campos de calibração 2:1
-de 1,0 x 0,5, 1,5 x 0,75 e 2,0 x 1,0 m, com distância operacional máxima de
-1,5 m. Esses tamanhos são candidatos provisórios; o maior campo só será adotado
-após passar os critérios nos dois aparelhos.
+O experimento ativo usa uma única folha A4 e o campo confirmado de
+1,0 x 0,5 m, com distância operacional máxima de 1,5 m. A validação não busca
+mais escolher o maior campo: deve comprovar tracking, escala e estabilidade
+desse tamanho nos dois aparelhos.
 
 ## Objetivos da validação do jogo local
 

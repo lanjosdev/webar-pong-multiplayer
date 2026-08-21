@@ -112,24 +112,36 @@ stream já fornecido pelo engine, só reproduz após `imagefound` e é pausado,
 desconectado e removido no teardown. Uma perda do target só é publicada após
 300 ms; `imagefound` ou `imageupdated` nesse intervalo cancela a perda
 transitória. Nos modos híbridos, a raiz permanece ancorada no espaço mundial.
-Uma reaquisição com diferença de até 2% do campo e 2 graus é interpolada em
-750 ms; diferenças maiores exigem recalibração. SLAM `LIMITED` por mais de
-1,5 s cancela qualquer correção em andamento, bloqueia recalibração, orienta o
-reenquadramento e é registrado como falha do ensaio.
+No `world-relative`, `imagefound` e `imageupdated` verificam a divergência da
+âncora. Três poses consistentes, observadas entre 150 e 600 ms e com dispersão
+máxima de 1% do campo e 1 grau, confirmam a nova referência. Diferenças de até
+2% do campo e 2 graus são interpoladas em 750 ms. Diferenças maiores ocultam o
+campo em 150 ms, aplicam automaticamente a nova âncora e reapresentam o campo em
+250 ms. SLAM `LIMITED` cancela a validação e qualquer correção; após 1,5 s, a
+âncora entra em `frozen` até o tracking voltar a `NORMAL`.
 
 ## Laboratório de tracking
 
-`?trackingLab=1` habilita identificação do aparelho e seletores para target físico, campo, distância,
-cenário e os modos `image-only`, `world-relative` e `world-absolute`. A
+`?trackingLab=1` habilita identificação do aparelho e seletores para target
+físico, campo, distância, cenário e os modos `image-only`, `world-relative` e
+`world-absolute`. A
 configuração fica bloqueada durante uma sessão. Ensaios podem ser iniciados e
-finalizados sem recarregar; o resultado é exportado em JSON com amostras brutas
-e métricas derivadas.
+finalizados sem recarregar; o resultado usa schema v2 e exporta amostras,
+timeline compacta, contadores de eventos, erros da âncora, reacisição da imagem,
+realinhamento, FPS e métricas derivadas.
+Os contadores e a quantidade de reancoragens são normalizados no início de cada
+ensaio, mesmo quando vários ensaios usam a mesma sessão de câmera.
 
-Os campos são apenas geometria de calibração 2:1: 1,0 x 0,5 m, 1,5 x 0,75 m e
-2,0 x 1,0 m. O modo relativo dimensiona a geometria pela proporção entre o
-target físico declarado e a geometria reportada pelo engine. O modo absoluto
-usa metros e orienta o usuário a mover o aparelho lentamente para frente e para
-trás enquanto a escala é estimada.
+A validade da âncora usa `uncalibrated`, `aligned`, `validating`, `reanchoring`
+e `frozen`. A HUD do laboratório combina esse estado com visibilidade do target
+e status do SLAM, evitando tratar “target encontrado” como sinônimo de campo
+alinhado. `Buscar nova calibração` somente agenda uma validação com poses novas.
+
+O campo de calibração e da experiência é fixo em 1,0 x 0,5 m. O modo relativo
+dimensiona a geometria pela proporção entre o target físico declarado e a
+geometria reportada pelo engine. O modo absoluto usa metros e orienta o usuário
+a mover o aparelho lentamente para frente e para trás enquanto a escala é
+estimada.
 
 ## Matriz de validação do tracking
 
@@ -152,7 +164,7 @@ Para cada aparelho selecionado, registrar:
 - Jitter P95 nos extremos: até 1% do comprimento do campo.
 - Drift acumulado: até 2% do comprimento do campo.
 - Reaquisição: cinco tentativas em até 2 s, sem salto visual.
-- O maior campo deve caber com 5% de margem a no máximo 1,5 m.
+- O campo de 1,0 x 0,5 m deve caber com 5% de margem a no máximo 1,5 m.
 
 FPS mínimo, budget térmico e duração final de produção continuam TBD; o ensaio
 de 10 minutos coleta a evidência necessária para defini-los.

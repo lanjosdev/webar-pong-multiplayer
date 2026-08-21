@@ -20,6 +20,8 @@ import type {
   TrackingLabConfig,
   TrackingSnapshot,
   TrackingSnapshotListener,
+  TrackingTimelineEvent,
+  TrackingTimelineEventListener,
 } from './types'
 
 const LIFECYCLE_MODULE_NAME = 'webar-runtime-lifecycle'
@@ -53,6 +55,7 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
     options.isEnvironmentSupported ?? (() => defaultEnvironmentIssue(options.window))
   const listeners = new Set<ArRuntimeListener>()
   const trackingListeners = new Set<TrackingSnapshotListener>()
+  const trackingEventListeners = new Set<TrackingTimelineEventListener>()
   let state: ArRuntimeState = { status: 'booting' }
   let engine: XrEngine | null = null
   let imageTargetData: ImageTargetData | null = null
@@ -71,15 +74,23 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
   let trackingLabConfig: TrackingLabConfig = {
     cameraDistanceMeters: 1.25,
     enabled: false,
-    fieldLengthMeters: 1.5,
+    fieldLengthMeters: 1,
     mode: 'image-only',
     targetHeightMeters: 0.2,
     targetWidthMeters: 0.15,
     trialScenario: 'acquisition',
   }
   let trackingSnapshot: TrackingSnapshot = {
+    anchorAngularErrorDegrees: null,
+    anchorStatus: 'uncalibrated',
+    anchorTranslationErrorMeters: null,
+    automaticReanchorCount: 0,
+    candidateSampleCount: 0,
     fieldCorners: [],
     framesPerSecond: null,
+    imageEventCounts: { found: 0, lost: 0, updated: 0 },
+    lastImageEvent: null,
+    lastImageEventAtMs: null,
     metersPerSceneUnit: 1,
     recalibrationRequired: false,
     targetPose: null,
@@ -101,6 +112,12 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
     trackingSnapshot = nextSnapshot
     for (const listener of trackingListeners) {
       listener(trackingSnapshot)
+    }
+  }
+
+  const emitTrackingEvent = (event: TrackingTimelineEvent) => {
+    for (const listener of trackingEventListeners) {
+      listener(event)
     }
   }
 
@@ -461,6 +478,7 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
           onLost: handleTargetLost,
           onScanning: handleTargetScanning,
           onTrackingSnapshot: emitTracking,
+          onTrackingTimelineEvent: emitTrackingEvent,
           targetName: imageTargetData.name,
         })
         modules = [
@@ -531,6 +549,11 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
       return () => trackingListeners.delete(listener)
     },
 
+    subscribeTrackingEvents(listener) {
+      trackingEventListeners.add(listener)
+      return () => trackingEventListeners.delete(listener)
+    },
+
     dispose() {
       if (disposed) {
         return
@@ -544,6 +567,7 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
       emit({ status: 'disposed' })
       listeners.clear()
       trackingListeners.clear()
+      trackingEventListeners.clear()
     },
   }
 

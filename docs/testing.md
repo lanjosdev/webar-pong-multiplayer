@@ -75,9 +75,10 @@ plana e fosca. Em cada aparelho:
 ## Laboratório A4 de tracking e campo
 
 Abra a aplicação com `?trackingLab=1`. Antes de iniciar a câmera, selecione o
-aparelho, target físico, campo, modo, distância e cenário; a configuração permanece
-bloqueada durante a sessão. `Iniciar ensaio` começa a coleta e `Finalizar e
-exportar` baixa um JSON contendo contexto, amostras, perdas e métricas.
+aparelho, target físico, modo, distância e cenário; o campo permanece fixo em
+1,0 x 0,5 m e a configuração fica bloqueada durante a sessão. `Iniciar ensaio`
+começa a coleta e `Finalizar e exportar` baixa um JSON contendo contexto,
+amostras, perdas e métricas.
 
 Os modos são:
 
@@ -105,24 +106,45 @@ mais ou menos 20 cm, e cinco oclusões de um segundo. Crie e teste um v3 somente
 se o v2 maximizado não atingir 9 de 10 aquisições em até 3 s a 1,5 m nos dois
 aparelhos ou perder tracking sustentado com a imagem inteira visível.
 
-### Etapa 2 — Campos de calibração
+### Etapa 2 — Campo de calibração
 
-Teste 1,0 x 0,5, 1,5 x 0,75 e 2,0 x 1,0 m com o melhor target. Para cada campo,
-encontre a menor estação em que toda a geometria caiba no viewport com 5% de
-margem. Meça 15 s com câmera parada e repita o movimento lento. Execute a
-triagem em portrait e repita o candidato vencedor em landscape.
+Teste o campo de 1,0 x 0,5 m com o melhor target. Encontre a menor estação em
+que toda a geometria caiba no viewport com 5% de margem. Meça 15 s com câmera
+parada e repita o movimento lento. Execute a triagem em portrait e repita a
+configuração em landscape.
 
 ### Etapa 3 — SLAM e escala
 
-Repita os campos em `world-relative` e depois `world-absolute`. Confirme que
+Repita o campo em `world-relative` e depois `world-absolute`. Confirme que
 `imagelost` não oculta o campo com SLAM normal, que reaquisições pequenas são
-suaves, que diferenças grandes solicitam `Recalibrar campo` e que um estado
-`LIMITED` sustentado congela a calibração, orienta o reenquadramento e marca o
-ensaio como falha. Compare as extremidades virtuais com as marcas físicas no chão.
+suaves e que diferenças grandes no modo relativo são confirmadas por três poses
+e reancoradas automaticamente. A transição deve ocultar e reapresentar o campo,
+sem fazê-lo deslizar pelo chão. Um estado `LIMITED` sustentado congela a
+calibração, orienta o reenquadramento e marca o ensaio como falha. Compare as
+extremidades virtuais com as marcas físicas no chão.
+
+### Validação do refino lógico relativo
+
+No Android que reproduziu o deslocamento, use o campo de 1,0 x 0,5 m e execute
+dez ciclos de movimento rápido em `world-relative` e cinco ciclos equivalentes
+em `image-only`. Em cada ciclo, exporte o JSON v2 e registre separadamente:
+
+- `imagelost` até a primeira nova observação de imagem;
+- primeira observação até `aligned`;
+- maior erro de translação e rotação;
+- quantidade de reancoragens automáticas;
+- eventos `imagefound`, `imageupdated` e `imagelost`.
+
+O refino lógico passa quando `validating` inicia na primeira nova pose após uma
+perda ou na primeira pose divergente sem perda, a
+reancoragem termina até 1 s após a terceira pose consistente, o erro final fica
+dentro de 2% e 2 graus e nenhum dos dez ciclos exige toque manual. Execute ainda
+três ensaios normais de 2 min; eles não podem produzir reancoragem falsa. A
+breve transição de opacidade só é aceitável durante recuperação confirmada.
 
 ### Critérios de aprovação do experimento
 
-O maior campo aprovado nos dois aparelhos precisa:
+O campo definido de 1,0 x 0,5 m precisa:
 
 - operar a no máximo 1,5 m e caber com 5% de margem;
 - adquirir em até 3 s em pelo menos 9 de 10 tentativas;
@@ -132,7 +154,7 @@ O maior campo aprovado nos dois aparelhos precisa:
 - não apresentar degradação progressiva evidente em 10 min.
 
 FPS e comportamento térmico devem ser registrados, mas não possuem budget de
-produto aprovado. Se nenhum campo passar, mantenha o gate aberto e avalie, em
+produto aprovado. Se o campo não passar, mantenha o gate aberto e avalie, em
 ordem, posição do target, textura não repetitiva, múltiplos targets e somente
 depois ChArUco/AprilTag.
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Scene } from 'three'
+import { Material, type Object3D, Scene } from 'three'
 
 import type {
   CameraPipelineModule,
@@ -10,7 +10,12 @@ import type {
 import type { XrEngineLoader } from './engine-loader'
 import type { ImageTargetDataLoader } from './image-target-data'
 import { createArRuntime } from './runtime'
-import type { ArRuntimeState, TrackingLabConfig, TrackingSnapshot } from './types'
+import type {
+  ArRuntimeState,
+  TrackingLabConfig,
+  TrackingSnapshot,
+  TrackingTimelineEvent,
+} from './types'
 
 class FakeEngine implements XrEngine {
   readonly calls: string[] = []
@@ -166,6 +171,20 @@ function setVisibility(value: DocumentVisibilityState): void {
   Object.defineProperty(document, 'visibilityState', { configurable: true, value })
 }
 
+function materialOpacities(object: Object3D | undefined): number[] {
+  const opacities: number[] = []
+  object?.traverse((child) => {
+    const value = Reflect.get(child, 'material') as unknown
+    const materials = Array.isArray(value) ? value : [value]
+    for (const material of materials) {
+      if (material instanceof Material) {
+        opacities.push(material.opacity)
+      }
+    }
+  })
+  return opacities
+}
+
 function setup() {
   const engine = new FakeEngine()
   const loader = new FakeLoader(engine)
@@ -185,7 +204,7 @@ function setup() {
 const worldRelativeLabConfig: TrackingLabConfig = {
   cameraDistanceMeters: 1.25,
   enabled: true,
-  fieldLengthMeters: 1.5,
+  fieldLengthMeters: 1,
   mode: 'world-relative',
   targetHeightMeters: 0.26,
   targetWidthMeters: 0.195,
@@ -435,6 +454,222 @@ describe('createArRuntime', () => {
     runtime.dispose()
   })
 
+  it('validates divergent image updates and reanchors the relative field automatically', async () => {
+    vi.useFakeTimers()
+    const { engine, runtime } = setup()
+    const snapshots: TrackingSnapshot[] = []
+    const events: TrackingTimelineEvent[] = []
+    runtime.configureTrackingLab(worldRelativeLabConfig)
+    runtime.subscribeTracking((snapshot) => snapshots.push(snapshot))
+    runtime.subscribeTrackingEvents((event) => events.push(event))
+    await runtime.preload()
+    const started = runtime.start(document.createElement('canvas'))
+    engine.emitCameraStatus('hasVideo')
+    await started
+    engine.emitPipelineEvent('reality.trackingstatus', { reason: 'UNDEFINED', status: 'NORMAL' })
+    const pose = (x: number) => ({
+      name: 'pong-marker-v2',
+      position: { x, y: 2, z: 3 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      scale: 2,
+      scaledHeight: 1,
+      scaledWidth: 0.75,
+    })
+    engine.emitPipelineEvent('reality.imagefound', pose(1))
+    const root = engine.scene.getObjectByName('tracked-experience-root')
+
+    engine.emitPipelineEvent('reality.imageupdated', pose(2))
+    expect(snapshots.at(-1)).toMatchObject({
+      anchorStatus: 'validating',
+      candidateSampleCount: 1,
+    })
+    vi.advanceTimersByTime(75)
+    engine.emitPipelineEvent('reality.imageupdated', pose(2))
+    vi.advanceTimersByTime(75)
+    engine.emitPipelineEvent('reality.imageupdated', pose(2))
+
+    expect(root?.position.x).toBe(1)
+    expect(snapshots.at(-1)).toMatchObject({ anchorStatus: 'reanchoring' })
+    const field = engine.scene.getObjectByName('tracking-lab-calibration-field')
+    vi.advanceTimersByTime(75)
+    engine.emitUpdate()
+    expect(Math.max(...materialOpacities(field))).toBeCloseTo(0.5, 5)
+    expect(root?.position.x).toBe(1)
+    vi.advanceTimersByTime(75)
+    engine.emitUpdate()
+    expect(root?.position.x).toBe(2)
+    expect(snapshots.at(-1)).toMatchObject({ automaticReanchorCount: 0 })
+    vi.advanceTimersByTime(250)
+    engine.emitUpdate()
+    expect(Math.max(...materialOpacities(field))).toBe(1)
+    expect(snapshots.at(-1)).toMatchObject({
+      anchorStatus: 'aligned',
+      automaticReanchorCount: 1,
+    })
+    expect(events.filter((event) => event.kind === 'image-updated')).toHaveLength(3)
+    expect(
+      events.filter((event) => event.kind === 'anchor-state').map((event) => event.anchorStatus),
+    ).toEqual(expect.arrayContaining(['validating', 'reanchoring', 'aligned']))
+    expect(events.map((event) => event.sequence)).toEqual(events.map((_, index) => index + 1))
+    runtime.dispose()
+  })
+
+  it('interpolates a confirmed small correction after relative target reacquisition', async () => {
+    vi.useFakeTimers()
+    const { engine, runtime } = setup()
+    const snapshots: TrackingSnapshot[] = []
+    runtime.configureTrackingLab(worldRelativeLabConfig)
+    runtime.subscribeTracking((snapshot) => snapshots.push(snapshot))
+    await runtime.preload()
+    const started = runtime.start(document.createElement('canvas'))
+    engine.emitCameraStatus('hasVideo')
+    await started
+    engine.emitPipelineEvent('reality.trackingstatus', { reason: 'UNDEFINED', status: 'NORMAL' })
+    const pose = (x: number) => ({
+      name: 'pong-marker-v2',
+      position: { x, y: 2, z: 3 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      scale: 2,
+      scaledHeight: 1,
+      scaledWidth: 0.75,
+    })
+    engine.emitPipelineEvent('reality.imagefound', pose(1))
+    const root = engine.scene.getObjectByName('tracked-experience-root')
+    engine.emitPipelineEvent('reality.imagelost', { name: 'pong-marker-v2' })
+    vi.advanceTimersByTime(75)
+    engine.emitPipelineEvent('reality.imagefound', pose(1.1))
+    expect(snapshots.at(-1)).toMatchObject({
+      anchorStatus: 'validating',
+      candidateSampleCount: 1,
+    })
+    vi.advanceTimersByTime(75)
+    engine.emitPipelineEvent('reality.imageupdated', pose(1.1))
+    vi.advanceTimersByTime(75)
+    engine.emitPipelineEvent('reality.imageupdated', pose(1.1))
+
+    expect(root?.position.x).toBe(1)
+    expect(snapshots.at(-1)?.anchorStatus).toBe('validating')
+    vi.advanceTimersByTime(375)
+    engine.emitUpdate()
+    expect(root?.position.x).toBeCloseTo(1.05, 5)
+    expect(snapshots.at(-1)?.anchorStatus).toBe('validating')
+    vi.advanceTimersByTime(375)
+    engine.emitUpdate()
+    expect(root?.position.x).toBeCloseTo(1.1, 5)
+    expect(snapshots.at(-1)?.anchorStatus).toBe('aligned')
+    runtime.dispose()
+  })
+
+  it('does not reanchor from an isolated or inconsistent relative pose', async () => {
+    vi.useFakeTimers()
+    const { engine, runtime } = setup()
+    const snapshots: TrackingSnapshot[] = []
+    runtime.configureTrackingLab(worldRelativeLabConfig)
+    runtime.subscribeTracking((snapshot) => snapshots.push(snapshot))
+    await runtime.preload()
+    const started = runtime.start(document.createElement('canvas'))
+    engine.emitCameraStatus('hasVideo')
+    await started
+    engine.emitPipelineEvent('reality.trackingstatus', { reason: 'UNDEFINED', status: 'NORMAL' })
+    const pose = (x: number) => ({
+      name: 'pong-marker-v2',
+      position: { x, y: 2, z: 3 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      scale: 2,
+      scaledHeight: 1,
+      scaledWidth: 0.75,
+    })
+    engine.emitPipelineEvent('reality.imagefound', pose(1))
+    const root = engine.scene.getObjectByName('tracked-experience-root')
+
+    engine.emitPipelineEvent('reality.imageupdated', pose(2))
+    vi.advanceTimersByTime(75)
+    engine.emitPipelineEvent('reality.imageupdated', pose(2.5))
+    expect(snapshots.at(-1)).toMatchObject({
+      anchorStatus: 'validating',
+      automaticReanchorCount: 0,
+      candidateSampleCount: 1,
+    })
+    vi.advanceTimersByTime(601)
+    engine.emitPipelineEvent('reality.imageupdated', pose(2.5))
+    vi.advanceTimersByTime(400)
+    engine.emitUpdate()
+
+    expect(root?.position.x).toBe(1)
+    expect(snapshots.at(-1)?.automaticReanchorCount).toBe(0)
+    runtime.dispose()
+  })
+
+  it('queues manual relative calibration without applying the stored pose', async () => {
+    vi.useFakeTimers()
+    const { engine, runtime } = setup()
+    const snapshots: TrackingSnapshot[] = []
+    runtime.configureTrackingLab(worldRelativeLabConfig)
+    runtime.subscribeTracking((snapshot) => snapshots.push(snapshot))
+    await runtime.preload()
+    const started = runtime.start(document.createElement('canvas'))
+    engine.emitCameraStatus('hasVideo')
+    await started
+    engine.emitPipelineEvent('reality.trackingstatus', { reason: 'UNDEFINED', status: 'NORMAL' })
+    engine.emitPipelineEvent('reality.imagefound', {
+      name: 'pong-marker-v2',
+      position: { x: 1, y: 2, z: 3 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      scale: 2,
+      scaledHeight: 1,
+      scaledWidth: 0.75,
+    })
+    const root = engine.scene.getObjectByName('tracked-experience-root')
+
+    runtime.recalibrateTracking()
+
+    expect(root?.position.toArray()).toEqual([1, 2, 3])
+    expect(snapshots.at(-1)).toMatchObject({
+      anchorStatus: 'validating',
+      candidateSampleCount: 0,
+    })
+    runtime.dispose()
+  })
+
+  it('freezes relative validation while world tracking remains limited', async () => {
+    vi.useFakeTimers()
+    const { engine, runtime } = setup()
+    const snapshots: TrackingSnapshot[] = []
+    runtime.configureTrackingLab(worldRelativeLabConfig)
+    runtime.subscribeTracking((snapshot) => snapshots.push(snapshot))
+    await runtime.preload()
+    const started = runtime.start(document.createElement('canvas'))
+    engine.emitCameraStatus('hasVideo')
+    await started
+    engine.emitPipelineEvent('reality.trackingstatus', { reason: 'UNDEFINED', status: 'NORMAL' })
+    engine.emitPipelineEvent('reality.imagefound', {
+      name: 'pong-marker-v2',
+      position: { x: 1, y: 2, z: 3 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      scale: 2,
+      scaledHeight: 1,
+      scaledWidth: 0.75,
+    })
+    engine.emitPipelineEvent('reality.trackingstatus', {
+      reason: 'INSUFFICIENT_FEATURES',
+      status: 'LIMITED',
+    })
+    vi.advanceTimersByTime(1000)
+    engine.emitPipelineEvent('reality.trackingstatus', {
+      reason: 'INSUFFICIENT_FEATURES',
+      status: 'LIMITED',
+    })
+    vi.advanceTimersByTime(500)
+
+    expect(snapshots.at(-1)).toMatchObject({
+      anchorStatus: 'frozen',
+      worldLimitedExceeded: true,
+    })
+    engine.emitPipelineEvent('reality.trackingstatus', { reason: 'UNDEFINED', status: 'NORMAL' })
+    expect(snapshots.at(-1)).toMatchObject({ anchorStatus: 'aligned', worldStatus: 'normal' })
+    runtime.dispose()
+  })
+
   it('configures absolute scale for the absolute-world laboratory mode', async () => {
     const { engine, runtime } = setup()
     runtime.configureTrackingLab({ ...worldRelativeLabConfig, mode: 'world-absolute' })
@@ -444,6 +679,25 @@ describe('createArRuntime', () => {
     await started
 
     expect(engine.calls).toContain('xr.configure:false:pong-marker-v2:absolute')
+    engine.emitPipelineEvent('reality.trackingstatus', { reason: 'UNDEFINED', status: 'NORMAL' })
+    engine.emitPipelineEvent('reality.imagefound', {
+      name: 'pong-marker-v2',
+      position: { x: 1, y: 2, z: 3 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      scale: 2,
+      scaledHeight: 1,
+      scaledWidth: 0.75,
+    })
+    const root = engine.scene.getObjectByName('tracked-experience-root')
+    engine.emitPipelineEvent('reality.imageupdated', {
+      name: 'pong-marker-v2',
+      position: { x: 2, y: 2, z: 3 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      scale: 2,
+      scaledHeight: 1,
+      scaledWidth: 0.75,
+    })
+    expect(root?.position.x).toBe(1)
     runtime.dispose()
   })
 

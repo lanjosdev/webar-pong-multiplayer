@@ -3,9 +3,14 @@ import * as THREE from 'three'
 import { createCalibrationField, type CalibrationField } from './calibration-field'
 import type { CameraPipelineEvent, CameraPipelineModule, XrEngine } from './engine-contract'
 import type {
+  AnchorStatus,
+  ImageTrackingEventCounts,
+  ImageTrackingEventKind,
   TrackingLabConfig,
   TrackingSnapshot,
   TrackingTargetPose,
+  TrackingTimelineEvent,
+  TrackingTimelineEventKind,
   WorldTrackingStatus,
 } from './types'
 
@@ -13,6 +18,12 @@ export const IMAGE_TARGET_MODULE_NAME = 'pong-image-target'
 export const TARGET_LOSS_GRACE_MS = 300
 export const WORLD_LIMITED_GRACE_MS = 1500
 export const ANCHOR_CORRECTION_MS = 750
+export const RELATIVE_VALIDATION_MIN_MS = 150
+export const RELATIVE_VALIDATION_MAX_MS = 600
+export const RELATIVE_VALIDATION_SAMPLE_COUNT = 3
+export const LARGE_REANCHOR_FADE_OUT_MS = 150
+export const LARGE_REANCHOR_FADE_IN_MS = 250
+export const TRACKING_EVENT_SAMPLE_MS = 100
 
 interface AnchorCorrection {
   endPosition: THREE.Vector3
@@ -24,6 +35,21 @@ interface AnchorCorrection {
   startedAtMs: number
 }
 
+interface PoseCandidate {
+  observedAtMs: number
+  pose: TrackingTargetPose
+}
+
+interface ReanchorTransition {
+  applied: boolean
+  endPose: TrackingTargetPose
+  originalPosition: THREE.Vector3
+  originalQuaternion: THREE.Quaternion
+  originalScale: number
+  phase: 'fading-in' | 'fading-out'
+  startedAtMs: number
+}
+
 export interface ImageTargetControllerOptions {
   config: TrackingLabConfig
   engine: XrEngine
@@ -32,6 +58,7 @@ export interface ImageTargetControllerOptions {
   onLost(targetName: string): void
   onScanning(): void
   onTrackingSnapshot(snapshot: TrackingSnapshot): void
+  onTrackingTimelineEvent(event: TrackingTimelineEvent): void
   targetName: string
   targetLossGraceMs?: number
 }
@@ -180,6 +207,7 @@ export function createImageTargetController(
 ): ImageTargetController {
   const now = options.now ?? (() => performance.now())
   const isWorldMode = options.config.enabled && options.config.mode !== 'image-only'
+  const isRefinedRelativeMode = options.config.enabled && options.config.mode === 'world-relative'
   let scene: THREE.Scene | null = null
   let root: THREE.Group | null = null
   let targetSurface: THREE.Mesh | null = null
@@ -200,15 +228,66 @@ export function createImageTargetController(
   let lastFrameAtMs: number | null = null
   let lastFrameSnapshotAtMs: number | null = null
   let framesPerSecond: number | null = null
+  let anchorStatus: AnchorStatus = 'uncalibrated'
+  let anchorTranslationErrorMeters: number | null = null
+  let anchorAngularErrorDegrees: number | null = null
+  let automaticReanchorCount = 0
+  let candidates: PoseCandidate[] = []
+  let manualValidationRequested = false
+  let reanchorTransition: ReanchorTransition | null = null
+  let timelineSequence = 0
+  let lastTimelineImageUpdatedAtMs: number | null = null
+  let lastImageEvent: ImageTrackingEventKind | null = null
+  let lastImageEventAtMs: number | null = null
+  let waitingForFirstObservationAfterLoss = false
+  const imageEventCounts: ImageTrackingEventCounts = { found: 0, lost: 0, updated: 0 }
+
+  const metersPerSceneUnitForPose = (pose: TrackingTargetPose | null) =>
+    options.config.mode === 'world-absolute' || !pose
+      ? 1
+      : options.config.targetHeightMeters / (pose.scaledHeight * pose.scale)
+
+  const timelineEvent = (
+    kind: TrackingTimelineEventKind,
+    pose: TrackingTargetPose | null = null,
+  ) => {
+    const eventPose = pose ?? lastPose
+    timelineSequence += 1
+    options.onTrackingTimelineEvent({
+      anchorAngularErrorDegrees,
+      anchorStatus,
+      anchorTranslationErrorMeters,
+      candidateSampleCount: candidates.length,
+      kind,
+      pose: eventPose ? structuredClone(eventPose) : null,
+      sequence: timelineSequence,
+      targetName: eventPose?.name ?? null,
+      timestampMs: Date.now(),
+      worldStatus,
+    })
+  }
+
+  const setAnchorStatus = (nextStatus: AnchorStatus) => {
+    if (anchorStatus === nextStatus) {
+      return
+    }
+    anchorStatus = nextStatus
+    timelineEvent('anchor-state')
+  }
 
   const emitSnapshot = () => {
-    const metersPerSceneUnit =
-      options.config.mode === 'world-absolute' || !lastPose
-        ? 1
-        : options.config.targetHeightMeters / (lastPose.scaledHeight * lastPose.scale)
+    const metersPerSceneUnit = metersPerSceneUnitForPose(lastPose)
     options.onTrackingSnapshot({
+      anchorAngularErrorDegrees,
+      anchorStatus,
+      anchorTranslationErrorMeters,
+      automaticReanchorCount,
+      candidateSampleCount: candidates.length,
       fieldCorners: field && root?.visible ? field.fieldCorners() : [],
       framesPerSecond,
+      imageEventCounts: { ...imageEventCounts },
+      lastImageEvent,
+      lastImageEventAtMs,
       metersPerSceneUnit,
       recalibrationRequired,
       targetPose: lastPose ? structuredClone(lastPose) : null,
@@ -238,6 +317,8 @@ export function createImageTargetController(
     cancelPendingLoss()
     cancelPendingLimited()
     correction = null
+    candidates = []
+    reanchorTransition = null
     if (root && scene) {
       scene.remove(root)
     }
@@ -314,7 +395,7 @@ export function createImageTargetController(
     scale: options.config.mode === 'world-absolute' ? 1 : pose.scale,
   })
 
-  const applyPoseImmediately = (pose: TrackingTargetPose) => {
+  const applyRootTransform = (pose: TrackingTargetPose) => {
     if (!root) {
       return
     }
@@ -322,9 +403,46 @@ export function createImageTargetController(
     root.position.copy(desired.position)
     root.quaternion.copy(desired.quaternion)
     root.scale.setScalar(desired.scale)
-    correction = null
-    recalibrationRequired = false
     anchorSet = true
+  }
+
+  const applyPoseImmediately = (pose: TrackingTargetPose) => {
+    if (!root) {
+      return
+    }
+    applyRootTransform(pose)
+    correction = null
+    reanchorTransition = null
+    field?.setOpacity(1)
+    recalibrationRequired = false
+    anchorTranslationErrorMeters = 0
+    anchorAngularErrorDegrees = 0
+    candidates = []
+    manualValidationRequested = false
+    setAnchorStatus('aligned')
+  }
+
+  const calculateAnchorErrors = (pose: TrackingTargetPose) => {
+    if (!root) {
+      return { angularDegrees: 0, translationMeters: 0 }
+    }
+    const desired = desiredTransform(pose)
+    return {
+      angularDegrees: THREE.MathUtils.radToDeg(root.quaternion.angleTo(desired.quaternion)),
+      translationMeters:
+        root.position.distanceTo(desired.position) * metersPerSceneUnitForPose(pose),
+    }
+  }
+
+  const posesAreConsistent = (left: TrackingTargetPose, right: TrackingTargetPose) => {
+    const leftTransform = desiredTransform(left)
+    const rightTransform = desiredTransform(right)
+    const translationMeters =
+      leftTransform.position.distanceTo(rightTransform.position) * metersPerSceneUnitForPose(right)
+    const angularDegrees = THREE.MathUtils.radToDeg(
+      leftTransform.quaternion.angleTo(rightTransform.quaternion),
+    )
+    return translationMeters <= options.config.fieldLengthMeters * 0.01 && angularDegrees <= 1
   }
 
   const updateGeometry = (pose: TrackingTargetPose) => {
@@ -346,15 +464,12 @@ export function createImageTargetController(
       return
     }
     const desired = desiredTransform(pose)
-    const metersPerSceneUnit =
-      options.config.mode === 'world-absolute'
-        ? 1
-        : options.config.targetHeightMeters / (pose.scaledHeight * pose.scale)
-    const translationThreshold = (options.config.fieldLengthMeters * 0.02) / metersPerSceneUnit
-    const angularDifference = THREE.MathUtils.radToDeg(root.quaternion.angleTo(desired.quaternion))
+    const errors = calculateAnchorErrors(pose)
+    anchorTranslationErrorMeters = errors.translationMeters
+    anchorAngularErrorDegrees = errors.angularDegrees
     if (
-      root.position.distanceTo(desired.position) > translationThreshold ||
-      angularDifference > 2
+      errors.translationMeters > options.config.fieldLengthMeters * 0.02 ||
+      errors.angularDegrees > 2
     ) {
       recalibrationRequired = true
       correction = null
@@ -370,6 +485,114 @@ export function createImageTargetController(
       startedAtMs: now(),
     }
     recalibrationRequired = false
+    candidates = []
+    manualValidationRequested = false
+    if (!isRefinedRelativeMode) {
+      setAnchorStatus('aligned')
+    }
+  }
+
+  const cancelReanchorTransition = () => {
+    if (!root || !reanchorTransition) {
+      reanchorTransition = null
+      field?.setOpacity(1)
+      return
+    }
+    if (reanchorTransition.applied) {
+      root.position.copy(reanchorTransition.originalPosition)
+      root.quaternion.copy(reanchorTransition.originalQuaternion)
+      root.scale.setScalar(reanchorTransition.originalScale)
+    }
+    reanchorTransition = null
+    field?.setOpacity(1)
+  }
+
+  const startLargeReanchor = (pose: TrackingTargetPose) => {
+    if (!root) {
+      return
+    }
+    correction = null
+    candidates = []
+    manualValidationRequested = false
+    recalibrationRequired = false
+    reanchorTransition = {
+      applied: false,
+      endPose: structuredClone(pose),
+      originalPosition: root.position.clone(),
+      originalQuaternion: root.quaternion.clone(),
+      originalScale: root.scale.x,
+      phase: 'fading-out',
+      startedAtMs: now(),
+    }
+    setAnchorStatus('reanchoring')
+  }
+
+  const validateRelativePose = (pose: TrackingTargetPose, forceValidation: boolean) => {
+    if (!root || !anchorSet || !isRefinedRelativeMode) {
+      return
+    }
+    const errors = calculateAnchorErrors(pose)
+    anchorTranslationErrorMeters = errors.translationMeters
+    anchorAngularErrorDegrees = errors.angularDegrees
+    const exceedsAnchorThreshold =
+      errors.translationMeters > options.config.fieldLengthMeters * 0.02 ||
+      errors.angularDegrees > 2
+    const shouldValidate =
+      forceValidation ||
+      manualValidationRequested ||
+      anchorStatus === 'validating' ||
+      exceedsAnchorThreshold
+    if (!shouldValidate) {
+      return
+    }
+    if (worldStatus !== 'normal' || reanchorTransition) {
+      candidates = []
+      return
+    }
+
+    recalibrationRequired = true
+    setAnchorStatus('validating')
+    const observedAtMs = now()
+    const firstCandidate = candidates[0]
+    const candidateWindowExpired =
+      firstCandidate !== undefined &&
+      observedAtMs - firstCandidate.observedAtMs > RELATIVE_VALIDATION_MAX_MS
+    const consistentWithWindow = candidates.every((candidate) =>
+      posesAreConsistent(candidate.pose, pose),
+    )
+    if (candidateWindowExpired || !consistentWithWindow) {
+      candidates = []
+    }
+
+    const sample = { observedAtMs, pose: structuredClone(pose) }
+    if (candidates.length < RELATIVE_VALIDATION_SAMPLE_COUNT) {
+      candidates.push(sample)
+    } else {
+      candidates[RELATIVE_VALIDATION_SAMPLE_COUNT - 1] = sample
+    }
+    const validationStartedAtMs = candidates[0]?.observedAtMs ?? observedAtMs
+    if (
+      candidates.length < RELATIVE_VALIDATION_SAMPLE_COUNT ||
+      observedAtMs - validationStartedAtMs < RELATIVE_VALIDATION_MIN_MS
+    ) {
+      return
+    }
+
+    const confirmedPose = candidates.at(-1)?.pose
+    if (!confirmedPose) {
+      return
+    }
+    const confirmedErrors = calculateAnchorErrors(confirmedPose)
+    anchorTranslationErrorMeters = confirmedErrors.translationMeters
+    anchorAngularErrorDegrees = confirmedErrors.angularDegrees
+    if (
+      confirmedErrors.translationMeters > options.config.fieldLengthMeters * 0.02 ||
+      confirmedErrors.angularDegrees > 2
+    ) {
+      startLargeReanchor(confirmedPose)
+    } else {
+      requestAnchorCorrection(confirmedPose)
+    }
   }
 
   const showTarget = (event: CameraPipelineEvent) => {
@@ -377,7 +600,15 @@ export function createImageTargetController(
     if (!pose || pose.name !== options.targetName) {
       return
     }
+    const imageEvent: ImageTrackingEventKind =
+      event.name === 'reality.imagefound' ? 'found' : 'updated'
+    imageEventCounts[imageEvent] += 1
+    lastImageEvent = imageEvent
+    lastImageEventAtMs = Date.now()
     const wasLost = targetStatus === 'lost'
+    const isFirstObservationAfterLoss = waitingForFirstObservationAfterLoss
+    const previousAnchorStatus = anchorStatus
+    const previousCandidateCount = candidates.length
     cancelPendingLoss()
     lastPose = pose
     targetStatus = 'visible'
@@ -385,6 +616,8 @@ export function createImageTargetController(
 
     if (!isWorldMode || !anchorSet) {
       applyPoseImmediately(pose)
+    } else if (isRefinedRelativeMode) {
+      validateRelativePose(pose, wasLost || isFirstObservationAfterLoss)
     } else if (event.name === 'reality.imagefound' && wasLost) {
       requestAnchorCorrection(pose)
     }
@@ -393,8 +626,24 @@ export function createImageTargetController(
     }
     options.onFound(pose.name)
     const eventAtMs = now()
+    const anchorStateChanged =
+      previousAnchorStatus !== anchorStatus || previousCandidateCount !== candidates.length
+    const shouldRecordTimeline =
+      imageEvent === 'found' ||
+      waitingForFirstObservationAfterLoss ||
+      anchorStateChanged ||
+      lastTimelineImageUpdatedAtMs === null ||
+      eventAtMs - lastTimelineImageUpdatedAtMs >= TRACKING_EVENT_SAMPLE_MS
+    if (shouldRecordTimeline) {
+      if (imageEvent === 'updated') {
+        lastTimelineImageUpdatedAtMs = eventAtMs
+      }
+      timelineEvent(imageEvent === 'found' ? 'image-found' : 'image-updated', pose)
+    }
+    waitingForFirstObservationAfterLoss = false
     if (
-      event.name === 'reality.imagefound' ||
+      imageEvent === 'found' ||
+      anchorStateChanged ||
       lastFrameSnapshotAtMs === null ||
       eventAtMs - lastFrameSnapshotAtMs >= 100
     ) {
@@ -408,10 +657,20 @@ export function createImageTargetController(
     if (targetName !== options.targetName) {
       return
     }
+    imageEventCounts.lost += 1
+    lastImageEvent = 'lost'
+    lastImageEventAtMs = Date.now()
+    waitingForFirstObservationAfterLoss = true
+    timelineEvent('image-lost')
     cancelPendingLoss()
     pendingLoss = setTimeout(() => {
       pendingLoss = null
       targetStatus = 'lost'
+      candidates = []
+      if (isRefinedRelativeMode && anchorStatus === 'validating' && !manualValidationRequested) {
+        recalibrationRequired = false
+        setAnchorStatus('aligned')
+      }
       if (root && !isWorldMode) {
         root.visible = false
       }
@@ -421,8 +680,11 @@ export function createImageTargetController(
   }
 
   const handleScanning = () => {
+    lastImageEvent = 'scanning'
+    lastImageEventAtMs = Date.now()
     targetStatus = 'scanning'
     options.onScanning()
+    timelineEvent('image-scanning')
     emitSnapshot()
   }
 
@@ -433,17 +695,41 @@ export function createImageTargetController(
     }
     worldStatus = tracking.status
     worldReason = tracking.reason
-    cancelPendingLimited()
     if (worldStatus === 'limited') {
-      pendingLimited = setTimeout(() => {
-        pendingLimited = null
-        worldLimitedExceeded = true
-        correction = null
-        emitSnapshot()
-      }, WORLD_LIMITED_GRACE_MS)
+      correction = null
+      candidates = []
+      if (isRefinedRelativeMode && !manualValidationRequested) {
+        recalibrationRequired = false
+      }
+      cancelReanchorTransition()
+      if (anchorSet && anchorStatus !== 'frozen') {
+        setAnchorStatus('aligned')
+      }
+      if (!isRefinedRelativeMode) {
+        cancelPendingLimited()
+      }
+      const shouldStartLimitedTimer = isRefinedRelativeMode
+        ? !pendingLimited && !worldLimitedExceeded
+        : true
+      if (shouldStartLimitedTimer) {
+        pendingLimited = setTimeout(() => {
+          pendingLimited = null
+          worldLimitedExceeded = true
+          correction = null
+          candidates = []
+          cancelReanchorTransition()
+          setAnchorStatus('frozen')
+          emitSnapshot()
+        }, WORLD_LIMITED_GRACE_MS)
+      }
     } else {
+      cancelPendingLimited()
       worldLimitedExceeded = false
+      if (anchorStatus === 'frozen') {
+        setAnchorStatus(manualValidationRequested ? 'validating' : 'aligned')
+      }
     }
+    timelineEvent('world-status')
     emitSnapshot()
   }
 
@@ -469,6 +755,34 @@ export function createImageTargetController(
       root.scale.setScalar(scale)
       if (progress === 1) {
         correction = null
+        anchorTranslationErrorMeters = 0
+        anchorAngularErrorDegrees = 0
+        if (isRefinedRelativeMode) {
+          setAnchorStatus('aligned')
+          emitSnapshot()
+        }
+      }
+    }
+    if (root && reanchorTransition) {
+      const transition = reanchorTransition
+      const phaseDuration =
+        transition.phase === 'fading-out' ? LARGE_REANCHOR_FADE_OUT_MS : LARGE_REANCHOR_FADE_IN_MS
+      const progress = Math.min(1, (frameAtMs - transition.startedAtMs) / phaseDuration)
+      field?.setOpacity(transition.phase === 'fading-out' ? 1 - progress : progress)
+      if (progress === 1 && transition.phase === 'fading-out') {
+        applyRootTransform(transition.endPose)
+        transition.applied = true
+        transition.phase = 'fading-in'
+        transition.startedAtMs = frameAtMs
+        anchorTranslationErrorMeters = 0
+        anchorAngularErrorDegrees = 0
+        emitSnapshot()
+      } else if (progress === 1) {
+        reanchorTransition = null
+        field?.setOpacity(1)
+        automaticReanchorCount += 1
+        setAnchorStatus('aligned')
+        emitSnapshot()
       }
     }
     if (lastFrameSnapshotAtMs === null || frameAtMs - lastFrameSnapshotAtMs >= 100) {
@@ -490,6 +804,9 @@ export function createImageTargetController(
       onDetach: disposeScene,
       onPaused: () => {
         cancelPendingLoss()
+        correction = null
+        candidates = []
+        cancelReanchorTransition()
         if (root) {
           root.visible = false
         }
@@ -500,6 +817,16 @@ export function createImageTargetController(
       onUpdate: updateFrame,
     },
     recalibrate() {
+      if (isRefinedRelativeMode && anchorSet) {
+        manualValidationRequested = true
+        recalibrationRequired = true
+        candidates = []
+        if (worldStatus === 'normal') {
+          setAnchorStatus('validating')
+        }
+        emitSnapshot()
+        return
+      }
       if (lastPose && !worldLimitedExceeded) {
         applyPoseImmediately(lastPose)
         if (root) {

@@ -9,6 +9,7 @@ export interface CalibrationField {
   fieldCorners(): TrackingVector3[]
   group: THREE.Group
   setDimensions(width: number, length: number): void
+  setOpacity(opacity: number): void
 }
 
 function lineGeometry(): THREE.BufferGeometry {
@@ -43,11 +44,11 @@ export function createCalibrationField(): CalibrationField {
   const surface = new THREE.Mesh(surfaceGeometry, surfaceMaterial)
 
   const boundaryGeometry = lineGeometry()
-  const boundaryMaterial = new THREE.LineBasicMaterial({ color: 0x70e2ff })
+  const boundaryMaterial = new THREE.LineBasicMaterial({ color: 0x70e2ff, transparent: true })
   const boundary = new THREE.LineSegments(boundaryGeometry, boundaryMaterial)
 
   const markerGeometry = new THREE.BoxGeometry(0.035, 0.035, 0.05)
-  const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xffbf47 })
+  const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xffbf47, transparent: true })
   for (const [x, y] of [
     [-0.5, -0.5],
     [0.5, -0.5],
@@ -60,7 +61,7 @@ export function createCalibrationField(): CalibrationField {
   }
 
   const endBarGeometry = new THREE.BoxGeometry(0.45, 0.025, 0.035)
-  const endBarMaterial = new THREE.MeshBasicMaterial({ color: 0xff6d9f })
+  const endBarMaterial = new THREE.MeshBasicMaterial({ color: 0xff6d9f, transparent: true })
   for (const y of [-0.47, 0.47]) {
     const endBar = new THREE.Mesh(endBarGeometry, endBarMaterial)
     endBar.position.set(0, y, 0.018)
@@ -101,6 +102,13 @@ export function createCalibrationField(): CalibrationField {
     setDimensions(width, length) {
       group.scale.set(width, length, Math.min(width, length))
       group.updateMatrixWorld(true)
+    },
+    setOpacity(opacity) {
+      const normalizedOpacity = THREE.MathUtils.clamp(opacity, 0, 1)
+      surfaceMaterial.opacity = 0.22 * normalizedOpacity
+      boundaryMaterial.opacity = normalizedOpacity
+      markerMaterial.opacity = normalizedOpacity
+      endBarMaterial.opacity = normalizedOpacity
     },
   }
 }

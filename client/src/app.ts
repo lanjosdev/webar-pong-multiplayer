@@ -1,4 +1,9 @@
-import { createDefaultArRuntime, type ArRuntime, type ArRuntimeState } from './ar'
+import {
+  createDefaultArRuntime,
+  type ArRuntime,
+  type ArRuntimeState,
+  type TrackingSnapshot,
+} from './ar'
 import { createTrackingLabUi } from './tracking-lab-ui'
 
 export interface AppHandle {
@@ -121,6 +126,28 @@ function isCameraVisible(state: ArRuntimeState): boolean {
   ].includes(state.status)
 }
 
+function trackingLabCameraTitle(snapshot: TrackingSnapshot): string | null {
+  if (snapshot.anchorStatus === 'frozen' || snapshot.worldLimitedExceeded) {
+    return 'Tracking limitado · reenquadre o marcador'
+  }
+  if (snapshot.anchorStatus === 'reanchoring') {
+    return 'Reancorando campo'
+  }
+  if (snapshot.anchorStatus === 'validating') {
+    return `Verificando alinhamento ${String(Math.min(snapshot.candidateSampleCount, 3))}/3`
+  }
+  if (snapshot.targetStatus === 'lost' && snapshot.worldStatus === 'normal') {
+    return 'Marcador perdido · campo mantido pelo SLAM'
+  }
+  if (snapshot.recalibrationRequired) {
+    return 'Recalibração necessária'
+  }
+  if (snapshot.targetStatus === 'visible' && snapshot.anchorStatus === 'aligned') {
+    return 'Target e campo alinhados'
+  }
+  return null
+}
+
 export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppHandle {
   const runtime = options.runtime ?? createDefaultArRuntime()
   const trackingLabEnabled =
@@ -180,8 +207,19 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
   root.replaceChildren(shell)
 
   let disposed = false
+  let currentState: ArRuntimeState = { status: 'booting' }
+  let latestTrackingSnapshot: TrackingSnapshot | null = null
+
+  const updateCameraStatus = () => {
+    const fallback = contentForState(currentState).title
+    cameraStatus.textContent =
+      (trackingLabEnabled && latestTrackingSnapshot
+        ? trackingLabCameraTitle(latestTrackingSnapshot)
+        : null) ?? fallback
+  }
 
   const render = (nextState: ArRuntimeState) => {
+    currentState = nextState
     const content = contentForState(nextState)
     const cameraVisible = isCameraVisible(nextState)
     const sessionRunning = isCameraVisible(nextState) && nextState.status !== 'requesting-camera'
@@ -196,7 +234,7 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
     canvas.hidden = !cameraVisible
     panel.hidden = cameraVisible
     cameraHud.hidden = !cameraVisible
-    cameraStatus.textContent = content.title
+    updateCameraStatus()
     stopAction.hidden = !sessionRunning
     trackingLabUi?.setSessionState(cameraVisible, trialEnabled)
 
@@ -209,6 +247,12 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
   }
 
   const unsubscribe = runtime.subscribe(render)
+  const unsubscribeTracking = trackingLabEnabled
+    ? runtime.subscribeTracking((snapshot) => {
+        latestTrackingSnapshot = snapshot
+        updateCameraStatus()
+      })
+    : () => undefined
 
   const handlePrimaryAction = () => {
     const action = primaryAction.dataset['action']
@@ -231,6 +275,7 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
       primaryAction.removeEventListener('click', handlePrimaryAction)
       stopAction.removeEventListener('click', handleStop)
       unsubscribe()
+      unsubscribeTracking()
       trackingLabUi?.dispose()
       runtime.dispose()
       shell.remove()

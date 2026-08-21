@@ -57,11 +57,23 @@ function snapshotLabel(snapshot: TrackingSnapshot, config: TrackingLabConfig): s
         : 'procurando target'
   const world = config.mode === 'image-only' ? 'SLAM desligado' : `SLAM ${snapshot.worldStatus}`
   const fps = snapshot.framesPerSecond ? ` · ${snapshot.framesPerSecond.toFixed(1)} FPS` : ''
-  if (snapshot.worldLimitedExceeded) {
-    return `${target} · calibração congelada; reenquadre o target${fps}`
+  if (snapshot.anchorStatus === 'frozen' || snapshot.worldLimitedExceeded) {
+    return `Tracking limitado · reenquadre o marcador${fps}`
+  }
+  if (snapshot.anchorStatus === 'reanchoring') {
+    return `Reancorando campo${fps}`
+  }
+  if (snapshot.anchorStatus === 'validating') {
+    return `Verificando alinhamento ${String(Math.min(snapshot.candidateSampleCount, 3))}/3${fps}`
+  }
+  if (snapshot.targetStatus === 'lost' && snapshot.worldStatus === 'normal') {
+    return `Marcador perdido · campo mantido pelo SLAM${fps}`
   }
   if (snapshot.recalibrationRequired) {
     return `${target} · recalibração necessária${fps}`
+  }
+  if (snapshot.targetStatus === 'visible' && snapshot.anchorStatus === 'aligned') {
+    return `Target e campo alinhados${fps}`
   }
   if (config.mode === 'world-absolute' && snapshot.worldStatus !== 'normal') {
     return `${target} · mova o celular lentamente para frente e para trás${fps}`
@@ -72,6 +84,8 @@ function snapshotLabel(snapshot: TrackingSnapshot, config: TrackingLabConfig): s
 export function createTrackingLabUi(runtime: ArRuntime, windowRef: Window): TrackingLabUi {
   let config: TrackingLabConfig = { ...DEFAULT_TRACKING_LAB_CONFIG }
   const recorder = new TrackingTrialRecorder()
+  let latestSnapshot: TrackingSnapshot | null = null
+  let sessionAllowsCalibration = false
   runtime.configureTrackingLab(config)
 
   const aside = document.createElement('aside')
@@ -156,7 +170,7 @@ export function createTrackingLabUi(runtime: ArRuntime, windowRef: Window): Trac
   finishTrial.disabled = true
   const recalibrate = document.createElement('button')
   recalibrate.type = 'button'
-  recalibrate.textContent = 'Recalibrar campo'
+  recalibrate.textContent = 'Buscar nova calibração'
   recalibrate.disabled = true
   actions.append(startTrial, finishTrial, recalibrate)
 
@@ -197,10 +211,18 @@ export function createTrackingLabUi(runtime: ArRuntime, windowRef: Window): Trac
   }
 
   const unsubscribeTracking = runtime.subscribeTracking((snapshot) => {
+    latestSnapshot = snapshot
     liveStatus.textContent = snapshotLabel(snapshot, config)
     recorder.add(snapshot)
-    recalibrate.disabled = snapshot.targetPose === null || snapshot.worldLimitedExceeded
+    recalibrate.disabled =
+      !sessionAllowsCalibration ||
+      snapshot.targetPose === null ||
+      snapshot.worldLimitedExceeded ||
+      snapshot.anchorStatus === 'reanchoring'
   })
+  const unsubscribeTrackingEvents = runtime.subscribeTrackingEvents((event) =>
+    recorder.addEvent(event),
+  )
 
   const handleStartTrial = () => {
     recorder.start(
@@ -215,6 +237,7 @@ export function createTrackingLabUi(runtime: ArRuntime, windowRef: Window): Trac
         viewportWidth: windowRef.innerWidth,
       },
       new Date(),
+      latestSnapshot ?? undefined,
     )
     startTrial.disabled = true
     finishTrial.disabled = false
@@ -243,18 +266,22 @@ export function createTrackingLabUi(runtime: ArRuntime, windowRef: Window): Trac
       finishTrial.removeEventListener('click', handleFinishTrial)
       recalibrate.removeEventListener('click', handleRecalibrate)
       unsubscribeTracking()
+      unsubscribeTrackingEvents()
       aside.remove()
     },
     element: aside,
     setSessionState(configurationLocked, trialEnabled) {
+      sessionAllowsCalibration = trialEnabled
       for (const control of configurableControls) {
         control.disabled = configurationLocked
       }
       startTrial.disabled = !trialEnabled || recorder.isRecording
       finishTrial.disabled = !recorder.isRecording
-      if (!trialEnabled) {
-        recalibrate.disabled = true
-      }
+      recalibrate.disabled =
+        !trialEnabled ||
+        latestSnapshot?.targetPose === null ||
+        latestSnapshot?.worldLimitedExceeded === true ||
+        latestSnapshot?.anchorStatus === 'reanchoring'
     },
   }
 }

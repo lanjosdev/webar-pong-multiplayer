@@ -50,6 +50,14 @@ de calibração opt-in. A UI consome estados discriminados de lifecycle e, no
 laboratório, snapshots internos de tracking; `XR8`, eventos crus de pose e
 Three.js não atravessam essa fronteira.
 
+No protótipo `world-relative`, o módulo de AR também é o proprietário da
+máquina de estados da âncora (`uncalibrated`, `aligned`, `validating`,
+`reanchoring` e `frozen`). O runtime expõe snapshots de estado e uma timeline
+compacta somente de observação. A UI pode iniciar uma nova validação, mas não
+escolhe nem aplica poses; essa responsabilidade permanece no adaptador AR. O
+gameplay futuro poderá ler o estado da âncora para pausar durante validação,
+reancoragem ou congelamento sem receber eventos crus do engine.
+
 O preenchimento decorativo das áreas externas ao canvas AR reutiliza o
 `MediaStream` entregue pelo engine em um vídeo independente e escurecido. Ele
 fica pausado durante aquisição e recuperação do target, não solicita outra

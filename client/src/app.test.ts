@@ -7,6 +7,7 @@ import type {
   TrackingLabConfig,
   TrackingSnapshot,
   TrackingSnapshotListener,
+  TrackingTimelineEventListener,
 } from './ar'
 import { mountApp } from './app'
 
@@ -21,9 +22,18 @@ class FakeRuntime implements ArRuntime {
   private state: ArRuntimeState = { status: 'booting' }
   private readonly listeners = new Set<ArRuntimeListener>()
   private readonly trackingListeners = new Set<TrackingSnapshotListener>()
+  private readonly trackingEventListeners = new Set<TrackingTimelineEventListener>()
   private trackingSnapshot: TrackingSnapshot = {
+    anchorAngularErrorDegrees: null,
+    anchorStatus: 'uncalibrated',
+    anchorTranslationErrorMeters: null,
+    automaticReanchorCount: 0,
+    candidateSampleCount: 0,
     fieldCorners: [],
     framesPerSecond: null,
+    imageEventCounts: { found: 0, lost: 0, updated: 0 },
+    lastImageEvent: null,
+    lastImageEventAtMs: null,
     metersPerSceneUnit: 1,
     recalibrationRequired: false,
     targetPose: null,
@@ -75,6 +85,11 @@ class FakeRuntime implements ArRuntime {
     return () => this.trackingListeners.delete(listener)
   }
 
+  subscribeTrackingEvents(listener: TrackingTimelineEventListener): () => void {
+    this.trackingEventListeners.add(listener)
+    return () => this.trackingEventListeners.delete(listener)
+  }
+
   dispose(): void {
     this.disposeCount += 1
   }
@@ -83,6 +98,13 @@ class FakeRuntime implements ArRuntime {
     this.state = state
     for (const listener of this.listeners) {
       listener(state)
+    }
+  }
+
+  emitTracking(snapshot: Partial<TrackingSnapshot>): void {
+    this.trackingSnapshot = { ...this.trackingSnapshot, ...snapshot }
+    for (const listener of this.trackingListeners) {
+      listener(this.trackingSnapshot)
     }
   }
 }
@@ -155,22 +177,47 @@ describe('mountApp', () => {
     expect(root.querySelector('.tracking-lab')).not.toBeNull()
     expect(runtime.trackingConfig).toMatchObject({
       enabled: true,
-      fieldLengthMeters: 1.5,
+      fieldLengthMeters: 1,
       mode: 'image-only',
       targetHeightMeters: 0.26,
     })
 
     const fieldSelect = root.querySelectorAll<HTMLSelectElement>('.lab-field select')[1]
     expect(fieldSelect).toBeDefined()
-    if (fieldSelect) {
-      fieldSelect.value = '2'
-      fieldSelect.dispatchEvent(new Event('change'))
-    }
-    expect(runtime.trackingConfig?.fieldLengthMeters).toBe(2)
+    expect(fieldSelect?.value).toBe('1')
+    expect(fieldSelect?.options).toHaveLength(1)
+    expect(runtime.trackingConfig?.fieldLengthMeters).toBe(1)
 
     runtime.emit({ status: 'searching-target' })
     expect(fieldSelect?.disabled).toBe(true)
     expect(root.querySelector<HTMLButtonElement>('.lab-actions button')?.disabled).toBe(false)
+  })
+
+  it('shows independent target and anchor states in the laboratory HUD', () => {
+    const root = document.createElement('div')
+    const runtime = new FakeRuntime()
+    mountApp(root, { runtime, trackingLabEnabled: true })
+    runtime.emit({ status: 'target-lost', targetName: 'pong-marker-v2' })
+    runtime.emitTracking({
+      anchorStatus: 'aligned',
+      targetStatus: 'lost',
+      worldStatus: 'normal',
+    })
+    expect(root.querySelector('.camera-status')?.textContent).toBe(
+      'Marcador perdido · campo mantido pelo SLAM',
+    )
+
+    runtime.emitTracking({ anchorStatus: 'validating', candidateSampleCount: 2 })
+    expect(root.querySelector('.camera-status')?.textContent).toBe('Verificando alinhamento 2/3')
+
+    runtime.emitTracking({ anchorStatus: 'reanchoring', candidateSampleCount: 0 })
+    expect(root.querySelector('.camera-status')?.textContent).toBe('Reancorando campo')
+
+    runtime.emitTracking({ anchorStatus: 'aligned', targetStatus: 'visible' })
+    expect(root.querySelector('.camera-status')?.textContent).toBe('Target e campo alinhados')
+    expect(
+      root.querySelector<HTMLButtonElement>('.lab-actions button:last-child')?.textContent,
+    ).toBe('Buscar nova calibração')
   })
 
   it('renders recoverable camera and engine failures', () => {

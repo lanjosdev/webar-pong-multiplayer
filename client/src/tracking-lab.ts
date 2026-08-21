@@ -3,6 +3,7 @@ import type {
   FieldLengthMeters,
   TrackingLabConfig,
   TrackingSnapshot,
+  TrackingTimelineEvent,
   TrackingVector3,
   TrialScenario,
 } from './ar'
@@ -10,14 +11,14 @@ import type {
 export const DEFAULT_TRACKING_LAB_CONFIG: TrackingLabConfig = {
   cameraDistanceMeters: 1.25,
   enabled: true,
-  fieldLengthMeters: 1.5,
+  fieldLengthMeters: 1,
   mode: 'image-only',
   targetHeightMeters: 0.26,
   targetWidthMeters: 0.195,
   trialScenario: 'acquisition',
 }
 
-export const FIELD_LENGTH_OPTIONS: FieldLengthMeters[] = [1, 1.5, 2]
+export const FIELD_LENGTH_OPTIONS: FieldLengthMeters[] = [1]
 export const CAMERA_DISTANCE_OPTIONS: CameraDistanceMeters[] = [0.75, 1, 1.25, 1.5, 2]
 export const TRIAL_SCENARIO_OPTIONS: Array<{ label: string; value: TrialScenario }> = [
   { label: 'Aquisição', value: 'acquisition' },
@@ -48,9 +49,15 @@ interface LossInterval {
 
 export interface TrackingTrialMetrics {
   acquisitionTimeMs: number | null
+  automaticReanchorCount: number
   completedLossCount: number
   driftMeters: number | null
+  imageEventCounts: { found: number; lost: number; updated: number }
   jitterP95Meters: number | null
+  maximumAnchorAngularErrorDegrees: number | null
+  maximumAnchorRealignmentMs: number | null
+  maximumAnchorTranslationErrorMeters: number | null
+  maximumImageReacquisitionMs: number | null
   maximumLossDurationMs: number | null
   medianFramesPerSecond: number | null
   recalibrationRequired: boolean
@@ -58,14 +65,24 @@ export interface TrackingTrialMetrics {
   worldLimitedExceeded: boolean
 }
 
+export interface ReacquisitionInterval {
+  alignedAtMs: number | null
+  firstObservationAtMs: number | null
+  imageReacquisitionMs: number | null
+  lostAtMs: number
+  realignmentMs: number | null
+}
+
 export interface TrackingTrialReport {
   config: TrackingLabConfig
   endedAt: string
   environment: TrackingLabEnvironment
+  events: TrackingTimelineEvent[]
   lossIntervals: LossInterval[]
   metrics: TrackingTrialMetrics
+  reacquisitions: ReacquisitionInterval[]
   samples: TrackingSnapshot[]
-  schemaVersion: 1
+  schemaVersion: 2
   startedAt: string
 }
 
@@ -158,9 +175,67 @@ function calculateWorldLimitedDuration(samples: TrackingSnapshot[], endedAtMs: n
   return total + (limitedStartedAt === null ? 0 : endedAtMs - limitedStartedAt)
 }
 
+function calculateReacquisitions(events: TrackingTimelineEvent[]): ReacquisitionInterval[] {
+  const intervals: ReacquisitionInterval[] = []
+  let openInterval: ReacquisitionInterval | null = null
+
+  for (const event of events) {
+    if (event.kind === 'image-lost') {
+      openInterval = {
+        alignedAtMs: null,
+        firstObservationAtMs: null,
+        imageReacquisitionMs: null,
+        lostAtMs: event.timestampMs,
+        realignmentMs: null,
+      }
+      intervals.push(openInterval)
+      continue
+    }
+    if (
+      openInterval &&
+      openInterval.firstObservationAtMs === null &&
+      (event.kind === 'image-found' || event.kind === 'image-updated')
+    ) {
+      openInterval.firstObservationAtMs = event.timestampMs
+      openInterval.imageReacquisitionMs = event.timestampMs - openInterval.lostAtMs
+      if (event.anchorStatus === 'aligned') {
+        openInterval.alignedAtMs = event.timestampMs
+        openInterval.realignmentMs = 0
+        openInterval = null
+      }
+      continue
+    }
+    if (
+      openInterval &&
+      openInterval.firstObservationAtMs !== null &&
+      event.kind === 'anchor-state' &&
+      event.anchorStatus === 'aligned'
+    ) {
+      openInterval.alignedAtMs = event.timestampMs
+      openInterval.realignmentMs = event.timestampMs - openInterval.firstObservationAtMs
+      openInterval = null
+    }
+  }
+  return intervals
+}
+
+function maximum(values: Array<number | null>): number | null {
+  return percentile(
+    values.filter((value): value is number => value !== null && Number.isFinite(value)),
+    1,
+  )
+}
+
 export class TrackingTrialRecorder {
+  private baselineAutomaticReanchorCount = 0
+  private baselineImageEventCounts: TrackingSnapshot['imageEventCounts'] = {
+    found: 0,
+    lost: 0,
+    updated: 0,
+  }
   private config: TrackingLabConfig | null = null
   private environment: TrackingLabEnvironment | null = null
+  private events: TrackingTimelineEvent[] = []
   private lossIntervals: LossInterval[] = []
   private samples: TrackingSnapshot[] = []
   private startedAt: Date | null = null
@@ -172,9 +247,19 @@ export class TrackingTrialRecorder {
     return this.startedAt !== null
   }
 
-  start(config: TrackingLabConfig, environment: TrackingLabEnvironment, now = new Date()): void {
+  start(
+    config: TrackingLabConfig,
+    environment: TrackingLabEnvironment,
+    now = new Date(),
+    baselineSnapshot?: TrackingSnapshot,
+  ): void {
     this.config = { ...config }
     this.environment = { ...environment }
+    this.baselineAutomaticReanchorCount = baselineSnapshot?.automaticReanchorCount ?? 0
+    this.baselineImageEventCounts = baselineSnapshot
+      ? { ...baselineSnapshot.imageEventCounts }
+      : { found: 0, lost: 0, updated: 0 }
+    this.events = []
     this.lossIntervals = []
     this.samples = []
     this.startedAt = now
@@ -207,26 +292,71 @@ export class TrackingTrialRecorder {
     }
   }
 
+  addEvent(event: TrackingTimelineEvent): void {
+    if (this.isRecording) {
+      this.events.push(structuredClone(event))
+    }
+  }
+
   finish(now = new Date()): TrackingTrialReport {
     if (!this.config || !this.environment || !this.startedAt) {
       throw new Error('Nenhum ensaio de tracking está em andamento.')
     }
 
     const { driftMeters, jitterP95Meters } = calculateCornerMetrics(this.samples)
+    const reacquisitions = calculateReacquisitions(this.events)
     const fpsValues = this.samples
       .map(({ framesPerSecond }) => framesPerSecond)
       .filter((value): value is number => value !== null && Number.isFinite(value))
     const completedLosses = this.lossIntervals.filter(({ durationMs }) => durationMs !== null)
+    const maximumImageEventCounts = this.samples.reduce(
+      (counts, sample) => ({
+        found: Math.max(counts.found, sample.imageEventCounts.found),
+        lost: Math.max(counts.lost, sample.imageEventCounts.lost),
+        updated: Math.max(counts.updated, sample.imageEventCounts.updated),
+      }),
+      { ...this.baselineImageEventCounts },
+    )
+    const maximumAutomaticReanchorCount =
+      maximum(this.samples.map(({ automaticReanchorCount }) => automaticReanchorCount)) ??
+      this.baselineAutomaticReanchorCount
     const report: TrackingTrialReport = {
       config: { ...this.config },
       endedAt: now.toISOString(),
       environment: { ...this.environment },
+      events: this.events.map((event) => structuredClone(event)),
       lossIntervals: this.lossIntervals.map((interval) => ({ ...interval })),
       metrics: {
         acquisitionTimeMs: this.acquisitionTimeMs,
+        automaticReanchorCount: Math.max(
+          0,
+          maximumAutomaticReanchorCount - this.baselineAutomaticReanchorCount,
+        ),
         completedLossCount: completedLosses.length,
         driftMeters,
+        imageEventCounts: {
+          found: Math.max(0, maximumImageEventCounts.found - this.baselineImageEventCounts.found),
+          lost: Math.max(0, maximumImageEventCounts.lost - this.baselineImageEventCounts.lost),
+          updated: Math.max(
+            0,
+            maximumImageEventCounts.updated - this.baselineImageEventCounts.updated,
+          ),
+        },
         jitterP95Meters,
+        maximumAnchorAngularErrorDegrees: maximum([
+          ...this.samples.map(({ anchorAngularErrorDegrees }) => anchorAngularErrorDegrees),
+          ...this.events.map(({ anchorAngularErrorDegrees }) => anchorAngularErrorDegrees),
+        ]),
+        maximumAnchorRealignmentMs: maximum(
+          reacquisitions.map(({ realignmentMs }) => realignmentMs),
+        ),
+        maximumAnchorTranslationErrorMeters: maximum([
+          ...this.samples.map(({ anchorTranslationErrorMeters }) => anchorTranslationErrorMeters),
+          ...this.events.map(({ anchorTranslationErrorMeters }) => anchorTranslationErrorMeters),
+        ]),
+        maximumImageReacquisitionMs: maximum(
+          reacquisitions.map(({ imageReacquisitionMs }) => imageReacquisitionMs),
+        ),
         maximumLossDurationMs:
           percentile(
             completedLosses
@@ -241,13 +371,17 @@ export class TrackingTrialRecorder {
         worldLimitedDurationMs: calculateWorldLimitedDuration(this.samples, now.getTime()),
         worldLimitedExceeded: this.samples.some(({ worldLimitedExceeded }) => worldLimitedExceeded),
       },
+      reacquisitions,
       samples: this.samples.map((sample) => structuredClone(sample)),
-      schemaVersion: 1,
+      schemaVersion: 2,
       startedAt: this.startedAt.toISOString(),
     }
 
     this.config = null
     this.environment = null
+    this.baselineAutomaticReanchorCount = 0
+    this.baselineImageEventCounts = { found: 0, lost: 0, updated: 0 }
+    this.events = []
     this.startedAt = null
     this.samples = []
     this.lossIntervals = []

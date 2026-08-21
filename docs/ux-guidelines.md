@@ -31,11 +31,19 @@ inteiro e centralizado. O preenchimento decorativo permanece pausado enquanto o
 target é procurado e só aparece, escurecido e sem blur, depois da aquisição.
 
 O laboratório interno `?trackingLab=1` acrescenta controles compactos para
-target, campo, distância, cenário e modo de tracking. Esses controles ficam
-bloqueados enquanto a câmera está ativa para evitar ensaios com configuração
-ambígua. Em `world-absolute`, a interface orienta um movimento lento para frente
-e para trás durante a estimativa de escala. Quando uma reaquisição excede os
-limites seguros, o campo não salta: a interface solicita recalibração explícita.
+target, campo fixo de 1,0 x 0,5 m, distância, cenário e modo de tracking. Esses
+controles ficam bloqueados enquanto a câmera está ativa para evitar ensaios com
+configuração ambígua. Em `world-absolute`, a interface orienta um movimento
+lento para frente e para trás durante a estimativa de escala. Quando uma
+reaquisição excede os limites seguros, o campo não salta: a interface solicita
+recalibração explícita.
+
+Em `world-relative`, o laboratório distingue perda do marcador, validação,
+reancoragem automática, alinhamento e tracking limitado. Uma divergência grande
+confirmada oculta brevemente o campo durante a troca de âncora. O fallback
+`Buscar nova calibração` apenas solicita três observações atuais; ele não aplica
+uma pose armazenada. Esse comportamento não altera a política do fluxo público
+nem a recalibração explícita de `world-absolute`.
 
 ## Estados obrigatórios de interface
 
