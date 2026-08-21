@@ -180,6 +180,15 @@ afterEach(() => {
 })
 
 describe('mountApp', () => {
+  const observedTargetPose = {
+    name: 'pong-marker-v2',
+    position: { x: 0, y: 0, z: 0 },
+    rotation: { w: 1, x: 0, y: 0, z: 0 },
+    scale: 1,
+    scaledHeight: 0.26,
+    scaledWidth: 0.195,
+  }
+
   it('explains camera access and waits for an explicit user action', () => {
     const root = document.createElement('div')
     const runtime = new FakeRuntime()
@@ -266,6 +275,12 @@ describe('mountApp', () => {
     const pong = new FakePongExperience()
     mountApp(root, { pongExperience: pong, runtime })
     runtime.emit({ status: 'target-found', targetName: 'pong-marker-v2' })
+    runtime.emitTracking({
+      anchorStatus: 'aligned',
+      targetPose: observedTargetPose,
+      targetStatus: 'visible',
+      worldStatus: 'normal',
+    })
 
     pong.emit({ readyAvailable: true, trackingSafe: true })
     expect(root.querySelector('.game-message')?.textContent).toBe('Vá para o lado azul')
@@ -282,6 +297,46 @@ describe('mountApp', () => {
     expect(root.querySelector('.game-message')?.textContent).toBe('Azul venceu!')
     root.querySelector<HTMLButtonElement>('.game-action')?.click()
     expect(pong.restartCount).toBe(1)
+  })
+
+  it('guides marker acquisition before exposing the ready action', () => {
+    const root = document.createElement('div')
+    const runtime = new FakeRuntime()
+    const pong = new FakePongExperience()
+    mountApp(root, { pongExperience: pong, runtime })
+    runtime.emit({ status: 'searching-target' })
+
+    const message = root.querySelector('.game-message')
+    const action = root.querySelector<HTMLButtonElement>('.game-action')
+    expect(message?.textContent).toBe('Aponte a câmera para o marcador')
+    expect(action?.hidden).toBe(true)
+
+    runtime.emitTracking({
+      anchorStatus: 'validating',
+      targetPose: observedTargetPose,
+      targetStatus: 'visible',
+    })
+    expect(message?.textContent).toBe('Mantenha o celular firme enquanto o campo estabiliza')
+    expect(action?.hidden).toBe(true)
+
+    runtime.emitTracking({ anchorStatus: 'aligned', worldStatus: 'normal' })
+    pong.emit({ readyAvailable: true, trackingSafe: true })
+    expect(message?.textContent).toBe('Vá para o lado azul')
+    expect(action?.hidden).toBe(false)
+    expect(action?.disabled).toBe(false)
+    expect(action?.textContent).toBe('Estou pronto')
+
+    runtime.emitTracking({
+      anchorStatus: 'uncalibrated',
+      targetPose: null,
+      targetStatus: 'scanning',
+      worldStatus: 'unavailable',
+    })
+    expect(message?.textContent).toBe('Aponte a câmera para o marcador')
+    expect(action?.hidden).toBe(true)
+
+    pong.emit({ phase: 'playing', readyAvailable: false, trackingPaused: true })
+    expect(message?.textContent).toBe('Jogo pausado · aponte para o marcador')
   })
 
   it('maps a horizontal pointer drag to a viewport-relative player movement', () => {

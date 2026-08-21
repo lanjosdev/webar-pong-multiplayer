@@ -27,7 +27,7 @@ como referência de posição, orientação e escala, não como limite visual do
 - Target físico padrão de demonstração em 195 x 260 mm.
 - `world-relative` como tracking público provisório do protótipo, sem aprovação
   do gate formal da Fase 1.
-- Jogador azul em `-Y`, IA vermelha em `+Y`, primeiro a 5 pontos e controle por
+- Jogador azul em `-Y`, IA vermelha em `+Y`, primeiro a 3 pontos e controle por
   arrasto relativo.
 - Evolução obrigatória por fases: WebAR, Pong local e multiplayer.
 - Multiplayer não faz parte das duas primeiras fases.

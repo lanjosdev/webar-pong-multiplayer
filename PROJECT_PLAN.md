@@ -55,13 +55,15 @@ O hardening do protótipo agora invalida tracking antigo após pause, retry, sto
 ou nova sessão, exige pose e SLAM `NORMAL` novos antes da retomada, mantém
 dimensões brutas fora do campo até a calibração ser aceita e remove clonagem e
 serialização do loop por frame do Pong. A cobertura automatizada foi ampliada;
-o comportamento físico e térmico continua pendente nos aparelhos reais.
+o onboarding do jogo também distingue procura do marcador, estabilização e
+prontidão sem exibir ações indisponíveis. O comportamento físico e térmico
+continua pendente nos aparelhos reais.
 
 Para preparar a apresentação, o ADR-0003 abriu uma trilha excepcional da Fase 2.
 O fluxo público adota provisoriamente o target de 195 x 260 mm, campo de
-1,0 x 0,5 m e `world-relative`. O Pong local está implementado com controle por
-arrasto, IA e proteção de tracking. Essa escolha é reversível e não encerra os
-gates de tracking, desempenho ou ergonomia.
+1,0 x 0,5 m e `world-relative`. O Pong local está implementado como uma partida
+até 3 pontos, com controle por arrasto, IA e proteção de tracking. Essa escolha
+é reversível e não encerra os gates de tracking, desempenho ou ergonomia.
 
 ### Restrição externa confirmada
 

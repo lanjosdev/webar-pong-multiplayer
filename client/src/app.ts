@@ -295,6 +295,7 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
   let disposed = false
   let currentState: ArRuntimeState = { status: 'booting' }
   let latestTrackingSnapshot: TrackingSnapshot | null = null
+  let latestPongState: LocalPongViewState | null = null
   let activePointerId: number | null = null
   let lastPointerX = 0
 
@@ -326,7 +327,14 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
         : null) ?? fallback
   }
 
-  const renderPong = (state: LocalPongViewState) => {
+  const renderCurrentPongState = () => {
+    const state = latestPongState
+    if (!state) {
+      return
+    }
+    const targetObserved =
+      latestTrackingSnapshot !== null && latestTrackingSnapshot.targetPose !== null
+
     playerScore.textContent = String(state.playerScore)
     aiScore.textContent = String(state.aiScore)
     gamePrompt.hidden = false
@@ -335,18 +343,25 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
     gameAction.dataset['action'] = ''
 
     if (state.trackingPaused) {
-      gameMessage.textContent =
-        state.countdown === null
-          ? 'Jogo pausado · estabilizando tracking'
-          : `Retomando em ${String(state.countdown)}`
+      if (!targetObserved) {
+        gameMessage.textContent = 'Jogo pausado · aponte para o marcador'
+      } else {
+        gameMessage.textContent =
+          state.countdown === null
+            ? 'Jogo pausado · estabilizando tracking'
+            : `Retomando em ${String(state.countdown)}`
+      }
     } else if (state.phase === 'ready') {
-      gameMessage.textContent = state.readyAvailable
-        ? 'Vá para o lado azul'
-        : 'Aguardando campo estável'
-      gameAction.hidden = false
-      gameAction.disabled = !state.readyAvailable
-      gameAction.dataset['action'] = 'start'
-      gameAction.textContent = 'Estou pronto'
+      if (!targetObserved) {
+        gameMessage.textContent = 'Aponte a câmera para o marcador'
+      } else if (!state.readyAvailable) {
+        gameMessage.textContent = 'Mantenha o celular firme enquanto o campo estabiliza'
+      } else {
+        gameMessage.textContent = 'Vá para o lado azul'
+        gameAction.hidden = false
+        gameAction.dataset['action'] = 'start'
+        gameAction.textContent = 'Estou pronto'
+      }
     } else if (state.phase === 'countdown') {
       gameMessage.textContent = String(state.countdown ?? 1)
     } else if (state.phase === 'point') {
@@ -369,6 +384,11 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
     if (!inputEnabled) {
       resetPointer()
     }
+  }
+
+  const renderPong = (state: LocalPongViewState) => {
+    latestPongState = state
+    renderCurrentPongState()
   }
 
   const render = (nextState: ArRuntimeState) => {
@@ -411,6 +431,7 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
           latestTrackingSnapshot = snapshot
           updateCameraStatus()
           updatePongTrackingSafety()
+          renderCurrentPongState()
         })
       : () => undefined
   const unsubscribePong = pongExperience?.subscribe(renderPong) ?? (() => undefined)

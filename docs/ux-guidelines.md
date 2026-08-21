@@ -44,12 +44,16 @@ confirmada oculta brevemente o campo durante a troca de âncora. O fallback
 `Buscar nova calibração` apenas solicita três observações atuais; ele não aplica
 uma pose armazenada e permanece exclusivo do laboratório.
 
-No fluxo público, depois da aquisição o jogador é orientado por “Vá para o lado
-azul” e confirma **Estou pronto**. O topo mostra o placar azul/vermelho; o centro
-mostra contagem, autor do ponto, pausa e fim da partida. Perder apenas o marcador
-mostra que o campo está mantido pelo SLAM e não interrompe o jogo. Tracking
-inseguro pausa a partida, informa estabilização e apresenta uma nova contagem
-3–2–1 antes da retomada.
+No fluxo público, antes da primeira observação válida o centro orienta “Aponte a
+câmera para o marcador” e não exibe uma ação indisponível. Depois da aquisição,
+enquanto o campo ainda não estiver seguro, a instrução muda para “Mantenha o
+celular firme enquanto o campo estabiliza”. Somente após a estabilização o
+jogador é orientado por “Vá para o lado azul” e pode confirmar **Estou pronto**.
+Uma retomada que invalide a pose volta à instrução de apontar para o marcador.
+O topo mostra o placar azul/vermelho; o centro mostra contagem, autor do ponto,
+pausa e fim da partida. Perder apenas o marcador mostra que o campo está mantido
+pelo SLAM e não interrompe o jogo. Tracking inseguro pausa a partida, informa
+estabilização e apresenta uma nova contagem 3–2–1 antes da retomada.
 
 ## Estados obrigatórios de interface
 

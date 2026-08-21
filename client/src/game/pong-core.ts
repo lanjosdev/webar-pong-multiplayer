@@ -14,7 +14,7 @@ export const PONG_CONFIG = {
   paddleWidthMeters: 0.14,
   playerMaximumSpeedMetersPerSecond: 1.2,
   pointPauseSeconds: 1,
-  scoreToWin: 5,
+  scoreToWin: 3,
 } as const
 
 export type PongSide = 'ai' | 'player'

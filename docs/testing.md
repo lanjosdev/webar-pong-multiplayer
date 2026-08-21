@@ -21,7 +21,7 @@ Execute a partir da raiz do repositório:
 
 Os testes automatizados cobrem shell, loader, ordem da pipeline, lifecycle,
 conteúdo ancorado e teardown. O game core cobre avanço determinístico, paredes,
-colisões, aceleração, pontos, saques, contagem, primeiro a 5 e reinício. IA,
+colisões, aceleração, pontos, saques, contagem, primeiro a 3 e reinício. IA,
 arrasto relativo, clamp, bloqueios de input, placar e pausa/retomada após
 tracking inseguro possuem testes próprios. O build compara inventário e
 conteúdo dos artefatos copiados com o pacote instalado.
@@ -165,22 +165,26 @@ depois ChArUco/AprilTag.
 Use o fluxo público, target de 195 x 260 mm, campo de 1,0 x 0,5 m e Redmi Note
 13. Execute uma vez em portrait e outra em landscape:
 
-1. inicie a câmera, adquira o target e aguarde `Campo alinhado`;
-2. caminhe até a extremidade azul e toque em **Estou pronto**;
-3. confirme a contagem 3–2–1, arraste a raquete e complete uma partida até 5;
-4. durante a partida, retire apenas o target da câmera mantendo o SLAM normal e
+1. inicie a câmera e confirme que o centro orienta apontar para o marcador sem
+   exibir **Estou pronto**;
+2. adquira o target, confirme a instrução de manter o celular firme durante a
+   estabilização e aguarde `Campo alinhado`;
+3. caminhe até a extremidade azul e toque em **Estou pronto**;
+4. confirme a contagem 3–2–1, arraste a raquete e complete uma partida até 3;
+5. durante a partida, retire apenas o target da câmera mantendo o SLAM normal e
    confirme que a física e o controle continuam ativos;
-5. provoque validação, reancoragem ou SLAM limitado e confirme que bola,
+6. provoque validação, reancoragem ou SLAM limitado e confirme que bola,
    raquetes e relógios congelam imediatamente;
-6. recupere o tracking e confirme 750 ms estáveis mais 3–2–1 antes da retomada;
-7. durante a partida, envie a página ao background e retorne; confirme que o
+7. recupere o tracking e confirme 750 ms estáveis mais 3–2–1 antes da retomada;
+8. durante a partida, envie a página ao background e retorne; confirme que o
    campo e a física permanecem bloqueados até uma nova pose do target e um novo
-   SLAM `NORMAL`, seguidos dos 750 ms e da contagem;
-8. finalize a partida, toque em **Jogar novamente** e confirme placar zerado e
+   SLAM `NORMAL`, que a UI volta a pedir o marcador e que depois seguem os
+   750 ms e a contagem;
+9. finalize a partida, toque em **Jogar novamente** e confirme placar zerado e
    nova contagem.
 
 A aceitação da apresentação exige uma partida completa sem avanço da física em
-tracking inseguro. Registrar vídeo nos passos 3 a 8 e JSON do laboratório apenas
+tracking inseguro. Registrar vídeo nos passos 4 a 9 e JSON do laboratório apenas
 se for necessário diagnosticar tracking. Esse smoke test não aprova os gates
 formais de tracking, desempenho ou ergonomia.
 

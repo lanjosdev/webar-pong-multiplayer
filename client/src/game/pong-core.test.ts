@@ -181,7 +181,7 @@ describe('PongGameCore', () => {
     expect(core.snapshot.ball.velocityX).toBeLessThan(0)
   })
 
-  it('finishes at five points and restarts a fresh match', () => {
+  it('finishes at three points and restarts a fresh match', () => {
     const scoringLimit = PONG_CONFIG.fieldLengthMeters / 2 + PONG_CONFIG.ballRadiusMeters
     const core = new PongGameCore(
       playingState({
@@ -192,14 +192,14 @@ describe('PongGameCore', () => {
           x: 0.2,
           y: scoringLimit - 0.001,
         },
-        score: { ai: 2, player: 4 },
+        score: { ai: 2, player: 2 },
       }),
     )
 
     core.step(1 / 60)
     expect(core.snapshot).toMatchObject({
       phase: 'finished',
-      score: { ai: 2, player: 5 },
+      score: { ai: 2, player: 3 },
       winner: 'player',
     })
 

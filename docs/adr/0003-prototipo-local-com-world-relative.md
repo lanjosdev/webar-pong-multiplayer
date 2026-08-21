@@ -55,7 +55,7 @@ Adotar provisoriamente no fluxo público de demonstração:
 - campo fixo de 1,0 x 0,5 m;
 - tracking `world-relative` com Target + SLAM;
 - jogador azul na extremidade local `-Y` e IA vermelha em `+Y`;
-- partida até 5 pontos, sem diferença mínima;
+- partida até 3 pontos, sem diferença mínima;
 - arrasto relativo na faixa inferior da tela.
 
 O módulo AR permanece proprietário da raiz ancorada e recebe o conteúdo por uma
