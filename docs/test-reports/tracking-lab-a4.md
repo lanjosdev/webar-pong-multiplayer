@@ -22,6 +22,15 @@ completam dez recuperações, três ensaios normais de 2 min, matriz em iPhone,
 medição de FPS/térmica ou critérios de jitter e drift; por isso o gate continua
 aberto.
 
+## Implementação da estabilização — evidência física pendente
+
+Em 2026-08-21, o ADR-0004 introduziu confiança mundial com 500 ms de histerese,
+correções pequenas em janelas seguras, retomada por causa, guia 3:4 e o perfil
+`minimal`. O laboratório passou ao schema v3 e registra durações `degraded` e
+`unsafe`, resultados das validações, correção pendente e perfil de desempenho.
+Essa entrega possui evidência automatizada, mas ainda não foi executada no Redmi
+Note 13 nem no iPhone 14; portanto não altera o status do gate.
+
 ## Observação que motivou o refino relativo
 
 Em 2026-08-20, um teste Android mostrou que movimentos rápidos podiam deslocar
@@ -60,11 +69,21 @@ falha descrito em `docs/testing.md` for observado.
 | TBD | 1,0 m / world-relative | TBD | TBD | TBD | TBD | TBD |
 | TBD | 1,0 m / world-absolute | TBD | TBD | TBD | TBD | TBD |
 
+## Comparação standard versus minimal
+
+| Aparelho | Perfil | Aquisição 9/10 <= 3 s | Pausas falsas (3 x 2 min) | Recuperações corretas (10) | Legibilidade | Decisão |
+| --- | --- | ---: | ---: | ---: | --- | --- |
+| Redmi Note 13 | standard | TBD | TBD | TBD | TBD | TBD |
+| Redmi Note 13 | minimal | TBD | TBD | TBD | TBD | TBD |
+| iPhone 14 | standard | TBD | TBD | TBD | TBD | TBD |
+| iPhone 14 | minimal | TBD | TBD | TBD | TBD | TBD |
+
 ## Decisão do gate
 
 - Campo definido: 1,0 x 0,5 m; aprovação nos dois aparelhos: TBD.
 - Target escolhido provisoriamente para demonstração: 195 x 260 mm.
 - Modo provisório do protótipo: `world-relative`.
 - SLAM aprovado definitivamente para o fluxo público: não; exceção do ADR-0003.
+- Perfil de desempenho padrão: `standard`; comparação `minimal`: TBD.
 - FPS e budget térmico propostos após evidência: TBD.
 - Pendências e próximo experimento: TBD.

@@ -19,6 +19,7 @@ export type TrackingMode = 'image-only' | 'world-absolute' | 'world-relative'
 export type FieldLengthMeters = 1
 export type CameraDistanceMeters = 0.75 | 1 | 1.25 | 1.5 | 2
 export type TrialScenario = 'acquisition' | 'movement' | 'reacquisition' | 'stationary' | 'thermal'
+export type PerformanceProfile = 'minimal' | 'standard'
 
 export interface TrackingLabConfig {
   cameraDistanceMeters: CameraDistanceMeters
@@ -50,8 +51,10 @@ export interface TrackingTargetPose {
 }
 
 export type WorldTrackingStatus = 'limited' | 'normal' | 'unavailable'
+export type WorldTrackingConfidence = 'degraded' | 'healthy' | 'unavailable' | 'unsafe'
 export type TargetTrackingStatus = 'lost' | 'scanning' | 'visible'
 export type AnchorStatus = 'aligned' | 'frozen' | 'reanchoring' | 'uncalibrated' | 'validating'
+export type AnchorValidationOutcome = 'confirmed-large' | 'confirmed-small' | 'discarded'
 export type ImageTrackingEventKind = 'found' | 'lost' | 'scanning' | 'updated'
 
 export interface ImageTrackingEventCounts {
@@ -61,30 +64,37 @@ export interface ImageTrackingEventCounts {
 }
 
 export type TrackingTimelineEventKind =
+  | 'anchor-validation'
   | 'anchor-state'
   | 'image-found'
   | 'image-lost'
   | 'image-scanning'
   | 'image-updated'
+  | 'world-confidence'
   | 'world-status'
 
 export interface TrackingTimelineEvent {
   anchorAngularErrorDegrees: number | null
+  anchorCorrectionPending: boolean
   anchorStatus: AnchorStatus
   anchorTranslationErrorMeters: number | null
+  anchorValidationOutcome: AnchorValidationOutcome | null
   candidateSampleCount: number
   kind: TrackingTimelineEventKind
   pose: TrackingTargetPose | null
   sequence: number
   targetName: string | null
   timestampMs: number
+  worldConfidence: WorldTrackingConfidence
   worldStatus: WorldTrackingStatus
 }
 
 export interface TrackingSnapshot {
   anchorAngularErrorDegrees: number | null
+  anchorCorrectionPending: boolean
   anchorStatus: AnchorStatus
   anchorTranslationErrorMeters: number | null
+  anchorValidationOutcome: AnchorValidationOutcome | null
   automaticReanchorCount: number
   candidateSampleCount: number
   fieldCorners: TrackingVector3[]
@@ -97,6 +107,7 @@ export interface TrackingSnapshot {
   targetPose: TrackingTargetPose | null
   targetStatus: TargetTrackingStatus
   timestampMs: number
+  worldConfidence: WorldTrackingConfidence
   worldReason: string | null
   worldStatus: WorldTrackingStatus
   worldLimitedExceeded: boolean

@@ -131,6 +131,12 @@ export class PongGameCore {
     this.beginCountdown()
   }
 
+  restartCountdown(): void {
+    if (this.state.phase === 'countdown') {
+      this.beginCountdown()
+    }
+  }
+
   setPlayerTarget(x: number): void {
     this.playerTargetX = clamp(x, -this.maximumPaddleX(), this.maximumPaddleX())
   }

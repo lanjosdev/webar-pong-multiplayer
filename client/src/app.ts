@@ -2,11 +2,13 @@ import {
   createDefaultArRuntime,
   type ArRuntime,
   type ArRuntimeState,
+  type PerformanceProfile,
   type TrackingSnapshot,
 } from './ar'
 import {
   createLocalPongExperience,
   type LocalPongExperience,
+  type LocalPongTrackingState,
   type LocalPongViewState,
 } from './game/local-pong-experience'
 import { createTrackingLabUi } from './tracking-lab-ui'
@@ -18,6 +20,7 @@ export interface AppHandle {
 export interface MountAppOptions {
   pongExperience?: LocalPongExperience | null
   runtime?: ArRuntime
+  performanceProfile?: PerformanceProfile
   trackingLabEnabled?: boolean
 }
 
@@ -139,7 +142,7 @@ function trackingLabCameraTitle(snapshot: TrackingSnapshot): string | null {
   if (snapshot.anchorStatus === 'reanchoring') {
     return 'Reancorando campo'
   }
-  if (snapshot.anchorStatus === 'validating') {
+  if (snapshot.anchorStatus === 'validating' || snapshot.candidateSampleCount > 0) {
     return `Verificando alinhamento ${String(Math.min(snapshot.candidateSampleCount, 3))}/3`
   }
   if (snapshot.targetStatus === 'lost' && snapshot.worldStatus === 'normal') {
@@ -155,33 +158,58 @@ function trackingLabCameraTitle(snapshot: TrackingSnapshot): string | null {
 }
 
 function pongCameraTitle(snapshot: TrackingSnapshot): string | null {
-  if (
-    snapshot.anchorStatus === 'frozen' ||
-    snapshot.worldStatus === 'limited' ||
-    snapshot.worldLimitedExceeded
-  ) {
-    return 'Tracking limitado · jogo pausado'
-  }
   if (snapshot.anchorStatus === 'reanchoring') {
     return 'Reancorando campo · jogo pausado'
   }
   if (snapshot.anchorStatus === 'validating') {
     return 'Validando alinhamento · jogo pausado'
   }
-  if (snapshot.anchorStatus === 'aligned' && snapshot.worldStatus === 'normal') {
+  if (
+    snapshot.anchorStatus === 'frozen' ||
+    snapshot.worldConfidence === 'unsafe' ||
+    snapshot.worldLimitedExceeded
+  ) {
+    return 'Tracking limitado · jogo pausado'
+  }
+  if (snapshot.anchorStatus === 'aligned' && snapshot.worldConfidence === 'degraded') {
+    return 'Sinal instável · campo mantido'
+  }
+  if (
+    snapshot.anchorStatus === 'aligned' &&
+    (snapshot.worldConfidence === 'healthy' || snapshot.worldConfidence === 'degraded')
+  ) {
     return snapshot.targetStatus === 'lost' ? 'Campo mantido pelo SLAM' : 'Campo alinhado'
   }
   return null
 }
 
-function isPongTrackingSafe(snapshot: TrackingSnapshot): boolean {
-  return snapshot.anchorStatus === 'aligned' && snapshot.worldStatus === 'normal'
+function pongTrackingState(
+  snapshot: TrackingSnapshot,
+  sessionActive: boolean,
+): LocalPongTrackingState {
+  if (!sessionActive) {
+    return { cause: 'lifecycle', safe: false }
+  }
+  if (snapshot.anchorStatus === 'reanchoring' || snapshot.anchorStatus === 'validating') {
+    return { cause: 'anchor', safe: false }
+  }
+  if (snapshot.worldConfidence === 'unsafe' || snapshot.anchorStatus === 'frozen') {
+    return { cause: 'world', safe: false }
+  }
+  if (snapshot.anchorStatus !== 'aligned') {
+    return { cause: 'anchor', safe: false }
+  }
+  const worldUsable =
+    snapshot.worldConfidence === 'healthy' || snapshot.worldConfidence === 'degraded'
+  return worldUsable ? { cause: null, safe: true } : { cause: 'world', safe: false }
 }
 
 export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppHandle {
-  const trackingLabEnabled =
-    options.trackingLabEnabled ??
-    new URLSearchParams(window.location.search).get('trackingLab') === '1'
+  const searchParams = new URLSearchParams(window.location.search)
+  const trackingLabEnabled = options.trackingLabEnabled ?? searchParams.get('trackingLab') === '1'
+  const performanceProfile =
+    options.performanceProfile ??
+    (searchParams.get('performanceProfile') === 'minimal' ? 'minimal' : 'standard')
   const pongExperience =
     options.pongExperience === undefined
       ? trackingLabEnabled
@@ -192,9 +220,11 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
     options.runtime ??
     createDefaultArRuntime({
       ...(pongExperience ? { anchoredContent: pongExperience } : {}),
+      performanceProfile,
     })
   const shell = document.createElement('main')
   shell.className = 'app-shell'
+  shell.dataset['performanceProfile'] = performanceProfile
 
   const canvas = document.createElement('canvas')
   canvas.className = 'camera-feed'
@@ -241,6 +271,11 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
   gameHud.hidden = true
   gameHud.setAttribute('aria-label', 'Placar e controles do Pong')
 
+  const targetGuide = document.createElement('div')
+  targetGuide.className = 'target-guide'
+  targetGuide.hidden = true
+  targetGuide.setAttribute('aria-hidden', 'true')
+
   const scoreboard = document.createElement('div')
   scoreboard.className = 'scoreboard'
 
@@ -284,7 +319,7 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
   gamePrompt.append(gameMessage, gameAction)
   touchZone.append(touchHint)
   gameHud.append(scoreboard, gamePrompt, touchZone)
-  overlay.append(panel, cameraHud, gameHud)
+  overlay.append(panel, cameraHud, targetGuide, gameHud)
   shell.append(canvas, overlay)
   const trackingLabUi = trackingLabEnabled ? createTrackingLabUi(runtime, window) : null
   if (trackingLabUi) {
@@ -310,10 +345,10 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
     )
 
   const updatePongTrackingSafety = () => {
-    pongExperience?.setTrackingSafe(
-      sessionAllowsTracking() &&
-        latestTrackingSnapshot !== null &&
-        isPongTrackingSafe(latestTrackingSnapshot),
+    pongExperience?.setTrackingState(
+      latestTrackingSnapshot
+        ? pongTrackingState(latestTrackingSnapshot, sessionAllowsTracking())
+        : { cause: 'lifecycle', safe: false },
     )
   }
 
@@ -334,6 +369,9 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
     }
     const targetObserved =
       latestTrackingSnapshot !== null && latestTrackingSnapshot.targetPose !== null
+    const acquiringTarget = !trackingLabEnabled && sessionAllowsTracking() && !targetObserved
+    targetGuide.hidden = !acquiringTarget
+    gamePrompt.dataset['acquisition'] = String(acquiringTarget)
 
     playerScore.textContent = String(state.playerScore)
     aiScore.textContent = String(state.aiScore)
@@ -349,11 +387,14 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
         gameMessage.textContent =
           state.countdown === null
             ? 'Jogo pausado · estabilizando tracking'
-            : `Retomando em ${String(state.countdown)}`
+            : state.trackingPauseCause === 'world'
+              ? 'Retomando…'
+              : `Retomando em ${String(state.countdown)}`
       }
     } else if (state.phase === 'ready') {
       if (!targetObserved) {
-        gameMessage.textContent = 'Aponte a câmera para o marcador'
+        gameMessage.textContent =
+          'Aproxime-se a 0,75–1 m, centralize o marcador e mantenha o celular firme'
       } else if (!state.readyAvailable) {
         gameMessage.textContent = 'Mantenha o celular firme enquanto o campo estabiliza'
       } else {
@@ -412,9 +453,13 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
     trackingLabUi?.setSessionState(cameraVisible, trialEnabled)
     gameHud.hidden = !pongExperience || !trialEnabled
     if (!trialEnabled) {
+      targetGuide.hidden = true
+    }
+    if (!trialEnabled) {
       resetPointer()
     }
     updatePongTrackingSafety()
+    renderCurrentPongState()
 
     eyebrow.textContent = content.eyebrow
     title.textContent = content.title

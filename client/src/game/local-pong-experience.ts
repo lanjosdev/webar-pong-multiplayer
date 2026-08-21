@@ -7,6 +7,15 @@ const FIXED_STEP_SECONDS = 1 / 60
 const MAX_ACCUMULATED_SECONDS = 0.25
 const TRACKING_STABILITY_SECONDS = 0.75
 const TRACKING_RESUME_COUNTDOWN_SECONDS = 3
+const TRACKING_BRIEF_RESUME_SECONDS = 1
+const ANCHOR_CORRECTION_WINDOW_SECONDS = 0.75
+
+export type TrackingPauseCause = 'anchor' | 'lifecycle' | 'world'
+
+export interface LocalPongTrackingState {
+  cause: TrackingPauseCause | null
+  safe: boolean
+}
 
 export interface LocalPongViewState {
   aiScore: number
@@ -16,6 +25,7 @@ export interface LocalPongViewState {
   pointWinner: PongSide | null
   readyAvailable: boolean
   trackingPaused: boolean
+  trackingPauseCause: TrackingPauseCause | null
   trackingSafe: boolean
   winner: PongSide | null
 }
@@ -25,7 +35,7 @@ export type LocalPongListener = (state: LocalPongViewState) => void
 export interface LocalPongExperience extends AnchoredContent {
   movePlayerBy(deltaNormalized: number): void
   restart(): void
-  setTrackingSafe(safe: boolean): void
+  setTrackingState(state: LocalPongTrackingState): void
   start(): void
   subscribe(listener: LocalPongListener): () => void
 }
@@ -123,6 +133,7 @@ export function createLocalPongExperience(): LocalPongExperience {
   let trackingSafe = false
   let stableTrackingSeconds = 0
   let trackingPaused = false
+  let trackingPauseCause: TrackingPauseCause | null = null
   let recoveryCountdownSeconds: number | null = null
   let lastViewState: LocalPongViewState | null = null
 
@@ -146,6 +157,7 @@ export function createLocalPongExperience(): LocalPongExperience {
       pointWinner: renderState.pointWinner,
       readyAvailable: readyAvailable(),
       trackingPaused,
+      trackingPauseCause,
       trackingSafe,
       winner: renderState.winner,
     }
@@ -163,6 +175,7 @@ export function createLocalPongExperience(): LocalPongExperience {
       lastViewState.pointWinner === renderState.pointWinner &&
       lastViewState.readyAvailable === readyAvailable() &&
       lastViewState.trackingPaused === trackingPaused &&
+      lastViewState.trackingPauseCause === trackingPauseCause &&
       lastViewState.trackingSafe === trackingSafe &&
       lastViewState.winner === renderState.winner
     ) {
@@ -191,12 +204,30 @@ export function createLocalPongExperience(): LocalPongExperience {
       return true
     }
     if (recoveryCountdownSeconds === null) {
-      recoveryCountdownSeconds = TRACKING_RESUME_COUNTDOWN_SECONDS
+      if (renderState.phase === 'point') {
+        trackingPaused = false
+        trackingPauseCause = null
+        accumulatorSeconds = 0
+        return false
+      }
+      if (renderState.phase === 'countdown' && trackingPauseCause !== 'world') {
+        core.restartCountdown()
+        core.copyStateInto(renderState)
+        trackingPaused = false
+        trackingPauseCause = null
+        accumulatorSeconds = 0
+        return false
+      }
+      recoveryCountdownSeconds =
+        trackingPauseCause === 'world'
+          ? TRACKING_BRIEF_RESUME_SECONDS
+          : TRACKING_RESUME_COUNTDOWN_SECONDS
       return true
     }
     recoveryCountdownSeconds = Math.max(0, recoveryCountdownSeconds - deltaSeconds)
     if (recoveryCountdownSeconds === 0) {
       trackingPaused = false
+      trackingPauseCause = null
       recoveryCountdownSeconds = null
       accumulatorSeconds = 0
     }
@@ -207,6 +238,14 @@ export function createLocalPongExperience(): LocalPongExperience {
   lastViewState = viewState()
 
   return {
+    canApplyAnchorCorrection() {
+      return (
+        renderState.phase === 'ready' ||
+        renderState.phase === 'finished' ||
+        (renderState.phase === 'point' &&
+          renderState.pointRemainingSeconds >= ANCHOR_CORRECTION_WINDOW_SECONDS)
+      )
+    },
     dispose() {
       if (disposed) {
         return
@@ -243,6 +282,7 @@ export function createLocalPongExperience(): LocalPongExperience {
       core.restart()
       core.copyStateInto(renderState)
       trackingPaused = false
+      trackingPauseCause = null
       recoveryCountdownSeconds = null
       accumulatorSeconds = 0
       render()
@@ -263,17 +303,29 @@ export function createLocalPongExperience(): LocalPongExperience {
         binding.material.opacity = binding.baseOpacity * normalizedOpacity
       }
     },
-    setTrackingSafe(safe) {
-      if (disposed || trackingSafe === safe) {
+    setTrackingState(nextState) {
+      if (disposed) {
         return
       }
-      trackingSafe = safe
+      const causePriority = (cause: TrackingPauseCause | null) =>
+        cause === 'world' ? 1 : cause === null ? 0 : 2
+      const shouldPromoteCause =
+        !nextState.safe && causePriority(nextState.cause) > causePriority(trackingPauseCause)
+      if (trackingSafe === nextState.safe && !shouldPromoteCause) {
+        return
+      }
+      trackingSafe = nextState.safe
       stableTrackingSeconds = 0
-      if (!safe) {
+      if (!nextState.safe) {
+        if (shouldPromoteCause || trackingPauseCause === null) {
+          trackingPauseCause = nextState.cause
+        }
         const phase = renderState.phase
         trackingPaused = phase !== 'ready' && phase !== 'finished'
         recoveryCountdownSeconds = null
         accumulatorSeconds = 0
+      } else if (!trackingPaused) {
+        trackingPauseCause = null
       }
       emit(true)
     },

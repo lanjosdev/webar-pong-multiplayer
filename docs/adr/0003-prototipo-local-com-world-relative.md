@@ -65,6 +65,10 @@ segurança do jogo depende exclusivamente de `anchorStatus === aligned` e
 limitado congelam imediatamente a simulação. Depois da recuperação, são exigidos
 750 ms continuamente estáveis e uma contagem 3–2–1 antes da retomada.
 
+Esta política registra a decisão original e permanece histórica. O ADR-0004 a
+revisa parcialmente ao separar o status cru da confiança efetiva, manter poses
+candidatas seguras até confirmação e diferenciar retomadas por causa.
+
 Os modos `image-only` e `world-absolute`, o plano do target, cubos, campo de
 calibração e telemetria visual permanecem exclusivos de `?trackingLab=1`.
 

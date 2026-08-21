@@ -52,4 +52,15 @@ describe('calculateCameraCanvasLayout', () => {
 
     expect(layout).toEqual({ cssHeight: 800, cssWidth: 400, pixelHeight: 1200, pixelWidth: 600 })
   })
+
+  it('supports a stricter pixel-ratio cap for the minimal performance profile', () => {
+    const layout = calculateCameraCanvasLayout({
+      devicePixelRatio: 4,
+      maximumPixelRatio: 1,
+      viewportHeight: 800,
+      viewportWidth: 400,
+    })
+
+    expect(layout).toEqual({ cssHeight: 800, cssWidth: 400, pixelHeight: 800, pixelWidth: 400 })
+  })
 })

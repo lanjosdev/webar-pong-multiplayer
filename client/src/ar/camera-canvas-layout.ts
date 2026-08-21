@@ -1,5 +1,6 @@
 export interface CameraCanvasLayoutInput {
   devicePixelRatio: number
+  maximumPixelRatio?: number
   videoHeight?: number
   videoWidth?: number
   viewportHeight: number
@@ -50,7 +51,8 @@ export function calculateCameraCanvasLayout(input: CameraCanvasLayoutInput): Cam
     }
   }
 
-  const pixelRatio = Math.min(MAX_CAMERA_PIXEL_RATIO, Math.max(1, input.devicePixelRatio))
+  const maximumPixelRatio = input.maximumPixelRatio ?? MAX_CAMERA_PIXEL_RATIO
+  const pixelRatio = Math.min(maximumPixelRatio, Math.max(1, input.devicePixelRatio))
   return {
     cssHeight,
     cssWidth,

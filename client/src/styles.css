@@ -81,6 +81,20 @@ button {
   background: #000;
 }
 
+.target-guide {
+  position: fixed;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  width: min(46vw, 12rem);
+  aspect-ratio: 3 / 4;
+  border: 0.16rem dashed rgb(112 226 255 / 82%);
+  border-radius: 0.8rem;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 999vmax rgb(8 10 14 / 12%);
+  pointer-events: none;
+}
+
 .experience-overlay {
   position: fixed;
   z-index: 2;
@@ -346,6 +360,11 @@ h1 {
   max-width: calc(100% - 2rem);
 }
 
+.game-prompt[data-acquisition='true'] {
+  align-self: end;
+  margin-bottom: calc(var(--touch-zone-height) + 1rem);
+}
+
 .game-message {
   margin: 0;
   border-radius: 999px;
@@ -459,6 +478,14 @@ h1 {
 
 .pong-touch-zone[data-dragging='true'] .touch-hint::after {
   transform: translateX(0.2rem);
+}
+
+.app-shell[data-performance-profile='minimal'] .camera-status,
+.app-shell[data-performance-profile='minimal'] .stop-action,
+.app-shell[data-performance-profile='minimal'] .scoreboard,
+.app-shell[data-performance-profile='minimal'] .game-message,
+.app-shell[data-performance-profile='minimal'] .tracking-lab {
+  backdrop-filter: none;
 }
 
 @media (orientation: landscape) and (max-height: 31rem) {

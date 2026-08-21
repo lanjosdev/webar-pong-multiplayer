@@ -17,6 +17,7 @@ import type {
   ArRuntime,
   ArRuntimeListener,
   ArRuntimeState,
+  PerformanceProfile,
   TrackingLabConfig,
   TrackingSnapshot,
   TrackingSnapshotListener,
@@ -33,6 +34,7 @@ export interface ArRuntimeOptions {
   imageTargetLoader: ImageTargetDataLoader
   isEnvironmentSupported?: () => string | null
   loader: XrEngineLoader
+  performanceProfile?: PerformanceProfile
   window: Window
 }
 
@@ -55,8 +57,10 @@ function errorMessage(error: unknown): string {
 function initialTrackingSnapshot(): TrackingSnapshot {
   return {
     anchorAngularErrorDegrees: null,
+    anchorCorrectionPending: false,
     anchorStatus: 'uncalibrated',
     anchorTranslationErrorMeters: null,
+    anchorValidationOutcome: null,
     automaticReanchorCount: 0,
     candidateSampleCount: 0,
     fieldCorners: [],
@@ -69,6 +73,7 @@ function initialTrackingSnapshot(): TrackingSnapshot {
     targetPose: null,
     targetStatus: 'scanning',
     timestampMs: Date.now(),
+    worldConfidence: 'unavailable',
     worldLimitedExceeded: false,
     worldReason: null,
     worldStatus: 'unavailable',
@@ -76,6 +81,7 @@ function initialTrackingSnapshot(): TrackingSnapshot {
 }
 
 export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
+  const performanceProfile = options.performanceProfile ?? 'standard'
   const environmentIssue =
     options.isEnvironmentSupported ?? (() => defaultEnvironmentIssue(options.window))
   const listeners = new Set<ArRuntimeListener>()
@@ -144,6 +150,7 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
     const cssHeight = viewport?.height ?? options.window.innerHeight
     const layout = calculateCameraCanvasLayout({
       devicePixelRatio: options.window.devicePixelRatio || 1,
+      ...(performanceProfile === 'minimal' ? { maximumPixelRatio: 1 } : {}),
       ...(videoSize ? { videoHeight: videoSize.height, videoWidth: videoSize.width } : {}),
       viewportHeight: cssHeight,
       viewportWidth: cssWidth,
@@ -193,7 +200,7 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
   }
 
   const attachCameraBackdrop = (stream: MediaStream) => {
-    if (!canvas) {
+    if (!canvas || performanceProfile === 'minimal') {
       return
     }
 

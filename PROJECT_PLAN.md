@@ -18,8 +18,9 @@ arquitetura e validação permanecem nos documentos especializados em `docs/`.
   registrada no ADR-0003.
 - Gates formais: **Fase 1 aberta** e **Fase 2 aberta**; a implementação jogável
   não substitui as validações físicas pendentes.
-- Próximo marco: smoke test da partida completa no Redmi Note 13 em portrait e
-  landscape, incluindo perda do target, pausa/retomada e reinício.
+- Próximo marco: protocolo físico de estabilização no Redmi Note 13 e iPhone 14,
+  comparando `standard` e `minimal`, seguido do smoke test da partida completa
+  em portrait e landscape.
 - Implementação multiplayer: **adiada até a aprovação das fases 1 e 2**.
 
 O engine binário já é copiado e verificado no build. O bootstrap de câmera e
@@ -47,7 +48,7 @@ O primeiro teste Android do `world-relative` revelou uma divergência não
 detectada quando o engine retomava o target por `imageupdated`. O laboratório
 agora pode validar novas poses de `imagefound` ou `imageupdated` com três
 amostras consistentes, reancora automaticamente diferenças grandes e exporta
-timeline schema v2. O refino está automatizado, mas sua aprovação continua
+timeline (inicialmente schema v2, agora v3 pelo ADR-0004). O refino está automatizado, mas sua aprovação continua
 dependente de dez recuperações rápidas e três ensaios normais de 2 min no
 aparelho real.
 
@@ -64,6 +65,16 @@ O fluxo público adota provisoriamente o target de 195 x 260 mm, campo de
 1,0 x 0,5 m e `world-relative`. O Pong local está implementado como uma partida
 até 3 pontos, com controle por arrasto, IA e proteção de tracking. Essa escolha
 é reversível e não encerra os gates de tracking, desempenho ou ergonomia.
+
+O ADR-0004 revisou a proteção sem alterar esse escopo: `LIMITED` só pausa após
+500 ms contínuos, ainda congela a âncora em 1,5 s e exige 750 ms estáveis para
+recuperação. Poses candidatas permanecem seguras até confirmação, correções
+pequenas aguardam janelas entre pontos e retomadas diferenciam `world` de
+`anchor`/`lifecycle`. O laboratório exporta schema v3 e o perfil
+`?performanceProfile=minimal` permite comparar vídeo decorativo, filtros e DPR.
+A implementação e testes automatizados estão concluídos; adoção do perfil e
+aprovação dos gates continuam dependentes dos ensaios físicos. O check completo
+da entrega aprovou 75 testes, lint, tipos, build e integridade dos artefatos XR.
 
 ### Restrição externa confirmada
 
@@ -146,6 +157,13 @@ gameplay e rede.
   novo SLAM normal antes de liberar a retomada.
 - [x] Separar pose observada de calibração aceita para impedir que amostras não
   confirmadas redimensionem o campo.
+- [x] Implementar confiança mundial com histerese de 500 ms, congelamento em
+  1,5 s, descarte por lifecycle e telemetria schema v3.
+- [x] Manter poses candidatas em `aligned` e aplicar correções pequenas somente
+  em janelas seguras do conteúdo, preservando reancoragem imediata para diferenças
+  grandes confirmadas.
+- [x] Adicionar guia de aquisição 3:4 e perfil A/B `minimal` sem alterar o padrão
+  `standard` antes da evidência física.
 - [ ] Validar o refino relativo em dez recuperações rápidas e três ensaios
   normais de 2 min no Android que reproduziu a divergência.
 - [ ] Executar a matriz A4 e decidir se o modo híbrido deve ser adotado no fluxo

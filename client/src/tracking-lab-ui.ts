@@ -63,7 +63,10 @@ function snapshotLabel(snapshot: TrackingSnapshot, config: TrackingLabConfig): s
   if (snapshot.anchorStatus === 'reanchoring') {
     return `Reancorando campo${fps}`
   }
-  if (snapshot.anchorStatus === 'validating') {
+  if (snapshot.worldConfidence === 'degraded') {
+    return `SLAM oscilando · dentro da tolerância${fps}`
+  }
+  if (snapshot.anchorStatus === 'validating' || snapshot.candidateSampleCount > 0) {
     return `Verificando alinhamento ${String(Math.min(snapshot.candidateSampleCount, 3))}/3${fps}`
   }
   if (snapshot.targetStatus === 'lost' && snapshot.worldStatus === 'normal') {
@@ -233,6 +236,10 @@ export function createTrackingLabUi(runtime: ArRuntime, windowRef: Window): Trac
         orientation: windowRef.matchMedia('(orientation: landscape)').matches
           ? 'landscape'
           : 'portrait',
+        performanceProfile:
+          new URLSearchParams(windowRef.location.search).get('performanceProfile') === 'minimal'
+            ? 'minimal'
+            : 'standard',
         viewportHeight: windowRef.innerHeight,
         viewportWidth: windowRef.innerWidth,
       },

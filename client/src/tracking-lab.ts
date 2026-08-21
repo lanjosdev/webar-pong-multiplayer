@@ -38,6 +38,7 @@ interface TrackingLabEnvironment {
   browser: string
   device: string
   orientation: string
+  performanceProfile: 'minimal' | 'standard'
   viewportHeight: number
   viewportWidth: number
 }
@@ -49,6 +50,11 @@ interface LossInterval {
 
 export interface TrackingTrialMetrics {
   acquisitionTimeMs: number | null
+  anchorValidationCounts: {
+    confirmedLarge: number
+    confirmedSmall: number
+    discarded: number
+  }
   automaticReanchorCount: number
   completedLossCount: number
   driftMeters: number | null
@@ -63,6 +69,8 @@ export interface TrackingTrialMetrics {
   recalibrationRequired: boolean
   worldLimitedDurationMs: number
   worldLimitedExceeded: boolean
+  worldDegradedDurationMs: number
+  worldUnsafeDurationMs: number
 }
 
 export interface ReacquisitionInterval {
@@ -82,7 +90,7 @@ export interface TrackingTrialReport {
   metrics: TrackingTrialMetrics
   reacquisitions: ReacquisitionInterval[]
   samples: TrackingSnapshot[]
-  schemaVersion: 2
+  schemaVersion: 3
   startedAt: string
 }
 
@@ -173,6 +181,24 @@ function calculateWorldLimitedDuration(samples: TrackingSnapshot[], endedAtMs: n
   }
 
   return total + (limitedStartedAt === null ? 0 : endedAtMs - limitedStartedAt)
+}
+
+function calculateWorldConfidenceDuration(
+  samples: TrackingSnapshot[],
+  endedAtMs: number,
+  confidence: TrackingSnapshot['worldConfidence'],
+): number {
+  let startedAt: number | null = null
+  let total = 0
+  for (const sample of samples) {
+    if (sample.worldConfidence === confidence && startedAt === null) {
+      startedAt = sample.timestampMs
+    } else if (sample.worldConfidence !== confidence && startedAt !== null) {
+      total += sample.timestampMs - startedAt
+      startedAt = null
+    }
+  }
+  return total + (startedAt === null ? 0 : endedAtMs - startedAt)
 }
 
 function calculateReacquisitions(events: TrackingTimelineEvent[]): ReacquisitionInterval[] {
@@ -320,6 +346,19 @@ export class TrackingTrialRecorder {
     const maximumAutomaticReanchorCount =
       maximum(this.samples.map(({ automaticReanchorCount }) => automaticReanchorCount)) ??
       this.baselineAutomaticReanchorCount
+    const anchorValidationCounts = this.events.reduce(
+      (counts, event) => {
+        if (event.anchorValidationOutcome === 'confirmed-large') {
+          counts.confirmedLarge += 1
+        } else if (event.anchorValidationOutcome === 'confirmed-small') {
+          counts.confirmedSmall += 1
+        } else if (event.anchorValidationOutcome === 'discarded') {
+          counts.discarded += 1
+        }
+        return counts
+      },
+      { confirmedLarge: 0, confirmedSmall: 0, discarded: 0 },
+    )
     const report: TrackingTrialReport = {
       config: { ...this.config },
       endedAt: now.toISOString(),
@@ -328,6 +367,7 @@ export class TrackingTrialRecorder {
       lossIntervals: this.lossIntervals.map((interval) => ({ ...interval })),
       metrics: {
         acquisitionTimeMs: this.acquisitionTimeMs,
+        anchorValidationCounts,
         automaticReanchorCount: Math.max(
           0,
           maximumAutomaticReanchorCount - this.baselineAutomaticReanchorCount,
@@ -370,10 +410,20 @@ export class TrackingTrialRecorder {
         ),
         worldLimitedDurationMs: calculateWorldLimitedDuration(this.samples, now.getTime()),
         worldLimitedExceeded: this.samples.some(({ worldLimitedExceeded }) => worldLimitedExceeded),
+        worldDegradedDurationMs: calculateWorldConfidenceDuration(
+          this.samples,
+          now.getTime(),
+          'degraded',
+        ),
+        worldUnsafeDurationMs: calculateWorldConfidenceDuration(
+          this.samples,
+          now.getTime(),
+          'unsafe',
+        ),
       },
       reacquisitions,
       samples: this.samples.map((sample) => structuredClone(sample)),
-      schemaVersion: 2,
+      schemaVersion: 3,
       startedAt: this.startedAt.toISOString(),
     }
 

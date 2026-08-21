@@ -60,6 +60,9 @@ exclusivos da plataforma hospedada legada. Consulte
 - O backing buffer de renderização usa no máximo DPR 1,5 para reduzir pressão de
   GPU sem alterar o tamanho CSS nem o campo de visão do feed. Esse limite é uma
   otimização provisória, não um budget de aceitação.
+- `?performanceProfile=minimal` desativa o vídeo decorativo, remove
+  `backdrop-filter` sobre o feed e limita o DPR a 1,0. `standard` continua sendo
+  o padrão até a comparação física nos dois aparelhos.
 
 ## Estados mínimos do runtime
 
@@ -123,10 +126,22 @@ transitória. Nos modos híbridos, a raiz permanece ancorada no espaço mundial.
 No `world-relative`, `imagefound` e `imageupdated` verificam a divergência da
 âncora. Três poses consistentes, observadas entre 150 e 600 ms e com dispersão
 máxima de 1% do campo e 1 grau, confirmam a nova referência. Diferenças de até
-2% do campo e 2 graus são interpoladas em 750 ms. Diferenças maiores ocultam o
-campo em 150 ms, aplicam automaticamente a nova âncora e reapresentam o campo em
-250 ms. SLAM `LIMITED` cancela a validação e qualquer correção; após 1,5 s, a
-âncora entra em `frozen` até o tracking voltar a `NORMAL`.
+2% do campo e 2 graus tornam-se correções pendentes. No Pong, a interpolação de
+750 ms só começa em `ready`, `finished` ou em `point` quando restarem pelo menos
+750 ms; outros conteúdos podem autorizar imediatamente. Uma confirmação mais
+recente substitui a pendente, e três amostras dentro do deadband aceito a
+cancelam. Diferenças maiores ocultam o campo em 150 ms, aplicam automaticamente
+a nova âncora e reapresentam o campo em 250 ms. Uma pose candidata mantém
+`anchorStatus: aligned`; somente a validação manual usa `validating`.
+
+`worldStatus` preserva o evento cru do engine. `worldConfidence` começa em
+`unavailable`, passa a `healthy` com `NORMAL` e a `degraded` no primeiro
+`LIMITED` após um estado saudável. `degraded` ainda é seguro. Se `LIMITED`
+persistir por 500 ms, a confiança passa uma única vez a `unsafe`, candidatos e
+correções são descartados e a simulação pausa. Com 1,5 s contínuos, a âncora
+entra em `frozen`. Um `NORMAL` anterior aos limites cancela ambos os timers;
+eventos `LIMITED` repetidos não os reiniciam. Lifecycle, retry, stop e nova
+sessão cancelam timers e voltam a `unavailable`.
 
 Pose observada e calibração visual aceita são estados distintos. Atualizações
 brutas alimentam validação e telemetria, mas não redimensionam o Pong. A primeira
@@ -140,16 +155,19 @@ uma transição for cancelada, transform e dimensões anteriores são restaurado
 físico, campo, distância, cenário e os modos `image-only`, `world-relative` e
 `world-absolute`. A
 configuração fica bloqueada durante uma sessão. Ensaios podem ser iniciados e
-finalizados sem recarregar; o resultado usa schema v2 e exporta amostras,
+finalizados sem recarregar; o resultado usa schema v3 e exporta amostras,
 timeline compacta, contadores de eventos, erros da âncora, reacisição da imagem,
-realinhamento, FPS e métricas derivadas.
+realinhamento, FPS, perfil de desempenho, intervalos de confiança
+`degraded`/`unsafe`, resultado de validação e correção pendente.
 Os contadores e a quantidade de reancoragens são normalizados no início de cada
 ensaio, mesmo quando vários ensaios usam a mesma sessão de câmera.
 
 A validade da âncora usa `uncalibrated`, `aligned`, `validating`, `reanchoring`
-e `frozen`. A HUD do laboratório combina esse estado com visibilidade do target
-e status do SLAM, evitando tratar “target encontrado” como sinônimo de campo
-alinhado. `Buscar nova calibração` somente agenda uma validação com poses novas.
+e `frozen`. A HUD do laboratório combina esse estado com visibilidade do target,
+confiança e status cru do SLAM, evitando tratar “target encontrado” como
+sinônimo de campo alinhado. O contador de candidatos torna a validação automática
+observável sem declarar a âncora insegura. `Buscar nova calibração` somente
+agenda uma validação com poses novas.
 
 O campo de calibração e da experiência é fixo em 1,0 x 0,5 m. O modo relativo
 dimensiona a geometria pela proporção entre o target físico declarado e a
@@ -164,12 +182,18 @@ reancoragem.
 
 ## Segurança do jogo local
 
-O tracking é seguro para a simulação somente com âncora `aligned` e SLAM
-`normal`; a visibilidade do target não entra nessa condição. `validating`,
-`reanchoring`, `frozen`, SLAM limitado e lifecycle pausado congelam posições e
-relógios imediatamente. A recuperação exige 750 ms continuamente seguros e
-depois uma contagem 3–2–1. Reancoragens encadeadas reiniciam essa estabilidade,
-evitando retomada entre correções.
+O tracking é seguro para a simulação com sessão ativa, âncora `aligned` e
+`worldConfidence` `healthy` ou `degraded`; a visibilidade do target e o status
+cru isolado não entram nessa condição. `unsafe`, `reanchoring`, `frozen`,
+validação manual e lifecycle pausado congelam posições e relógios.
+
+O Pong expõe `trackingPauseCause` como `world`, `anchor` ou `lifecycle`.
+Depois de 750 ms continuamente seguros, uma pausa causada somente por `world`
+mostra “Retomando” por 1 s e libera o relógio existente. `anchor` e `lifecycle`
+usam retomada 3–2–1 e prevalecem sobre uma causa mundial. Se o core já estiver
+em `countdown`, a contagem é retomada após a pausa mundial ou reiniciada em 3
+para causas mais graves, nunca empilhada. Em `point`, a pausa aguarda o próximo
+countdown normal do core.
 
 Após background ou reinício da câmera, `aligned` e `normal` só podem representar
 observações novas da sessão atual. O estado anterior nunca é suficiente para

@@ -14,6 +14,7 @@ import { mountApp } from './app'
 import type {
   LocalPongExperience,
   LocalPongListener,
+  LocalPongTrackingState,
   LocalPongViewState,
 } from './game/local-pong-experience'
 
@@ -33,6 +34,7 @@ class FakePongExperience implements LocalPongExperience {
     pointWinner: null,
     readyAvailable: false,
     trackingPaused: false,
+    trackingPauseCause: null,
     trackingSafe: false,
     winner: null,
   }
@@ -53,8 +55,8 @@ class FakePongExperience implements LocalPongExperience {
 
   setOpacity(): void {}
 
-  setTrackingSafe(safe: boolean): void {
-    this.trackingSafety.push(safe)
+  setTrackingState(state: LocalPongTrackingState): void {
+    this.trackingSafety.push(state.safe)
   }
 
   start(): void {
@@ -91,8 +93,10 @@ class FakeRuntime implements ArRuntime {
   private readonly trackingEventListeners = new Set<TrackingTimelineEventListener>()
   private trackingSnapshot: TrackingSnapshot = {
     anchorAngularErrorDegrees: null,
+    anchorCorrectionPending: false,
     anchorStatus: 'uncalibrated',
     anchorTranslationErrorMeters: null,
+    anchorValidationOutcome: null,
     automaticReanchorCount: 0,
     candidateSampleCount: 0,
     fieldCorners: [],
@@ -105,6 +109,7 @@ class FakeRuntime implements ArRuntime {
     targetPose: null,
     targetStatus: 'scanning',
     timestampMs: Date.now(),
+    worldConfidence: 'unavailable',
     worldLimitedExceeded: false,
     worldReason: null,
     worldStatus: 'unavailable',
@@ -168,7 +173,11 @@ class FakeRuntime implements ArRuntime {
   }
 
   emitTracking(snapshot: Partial<TrackingSnapshot>): void {
-    this.trackingSnapshot = { ...this.trackingSnapshot, ...snapshot }
+    const inferredConfidence =
+      snapshot.worldConfidence === undefined && snapshot.worldStatus === 'normal'
+        ? { worldConfidence: 'healthy' as const }
+        : {}
+    this.trackingSnapshot = { ...this.trackingSnapshot, ...inferredConfidence, ...snapshot }
     for (const listener of this.trackingListeners) {
       listener(this.trackingSnapshot)
     }
@@ -262,10 +271,27 @@ describe('mountApp', () => {
     expect(pong.trackingSafety.at(-1)).toBe(true)
     expect(root.querySelector('.camera-status')?.textContent).toBe('Campo mantido pelo SLAM')
 
-    runtime.emitTracking({ anchorStatus: 'reanchoring' })
+    runtime.emitTracking({ worldConfidence: 'degraded', worldStatus: 'limited' })
+    expect(pong.trackingSafety.at(-1)).toBe(true)
+    expect(root.querySelector('.camera-status')?.textContent).toBe('Sinal instável · campo mantido')
+
+    runtime.emitTracking({ worldConfidence: 'unsafe' })
+    expect(pong.trackingSafety.at(-1)).toBe(false)
+
+    runtime.emitTracking({ anchorStatus: 'reanchoring', worldConfidence: 'healthy' })
     expect(pong.trackingSafety.at(-1)).toBe(false)
     expect(root.querySelector('.camera-status')?.textContent).toBe(
       'Reancorando campo · jogo pausado',
+    )
+  })
+
+  it('selects the minimal performance profile explicitly', () => {
+    const root = document.createElement('div')
+    const runtime = new FakeRuntime()
+    mountApp(root, { performanceProfile: 'minimal', runtime })
+
+    expect(root.querySelector<HTMLElement>('.app-shell')?.dataset['performanceProfile']).toBe(
+      'minimal',
     )
   })
 
@@ -281,6 +307,7 @@ describe('mountApp', () => {
       targetStatus: 'visible',
       worldStatus: 'normal',
     })
+    expect(root.querySelector<HTMLElement>('.target-guide')?.hidden).toBe(true)
 
     pong.emit({ readyAvailable: true, trackingSafe: true })
     expect(root.querySelector('.game-message')?.textContent).toBe('Vá para o lado azul')
@@ -308,7 +335,10 @@ describe('mountApp', () => {
 
     const message = root.querySelector('.game-message')
     const action = root.querySelector<HTMLButtonElement>('.game-action')
-    expect(message?.textContent).toBe('Aponte a câmera para o marcador')
+    expect(message?.textContent).toBe(
+      'Aproxime-se a 0,75–1 m, centralize o marcador e mantenha o celular firme',
+    )
+    expect(root.querySelector<HTMLElement>('.target-guide')?.hidden).toBe(false)
     expect(action?.hidden).toBe(true)
 
     runtime.emitTracking({
@@ -332,7 +362,9 @@ describe('mountApp', () => {
       targetStatus: 'scanning',
       worldStatus: 'unavailable',
     })
-    expect(message?.textContent).toBe('Aponte a câmera para o marcador')
+    expect(message?.textContent).toBe(
+      'Aproxime-se a 0,75–1 m, centralize o marcador e mantenha o celular firme',
+    )
     expect(action?.hidden).toBe(true)
 
     pong.emit({ phase: 'playing', readyAvailable: false, trackingPaused: true })

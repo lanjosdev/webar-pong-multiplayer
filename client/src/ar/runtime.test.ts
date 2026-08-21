@@ -13,6 +13,7 @@ import type { ImageTargetDataLoader } from './image-target-data'
 import { createArRuntime } from './runtime'
 import type {
   ArRuntimeState,
+  PerformanceProfile,
   TrackingLabConfig,
   TrackingSnapshot,
   TrackingTimelineEvent,
@@ -192,6 +193,11 @@ class RecordingAnchoredContent implements AnchoredContent {
   disposeCount = 0
   opacities: number[] = []
   updates: number[] = []
+  allowAnchorCorrection = true
+
+  canApplyAnchorCorrection(): boolean {
+    return this.allowAnchorCorrection
+  }
 
   dispose(): void {
     this.disposeCount += 1
@@ -210,7 +216,7 @@ class RecordingAnchoredContent implements AnchoredContent {
   }
 }
 
-function setup(anchoredContent?: AnchoredContent) {
+function setup(anchoredContent?: AnchoredContent, performanceProfile?: PerformanceProfile) {
   const engine = new FakeEngine()
   const loader = new FakeLoader(engine)
   const imageTargetLoader = new FakeImageTargetLoader()
@@ -220,6 +226,7 @@ function setup(anchoredContent?: AnchoredContent) {
     imageTargetLoader,
     isEnvironmentSupported: () => null,
     loader,
+    ...(performanceProfile ? { performanceProfile } : {}),
     window,
   })
   const states: ArRuntimeState[] = []
@@ -362,6 +369,21 @@ describe('createArRuntime', () => {
     expect(document.querySelector('.camera-backdrop')).toBeNull()
     expect(pause).toHaveBeenCalledTimes(2)
     expect(backdrop?.srcObject).toBeNull()
+    runtime.dispose()
+  })
+
+  it('does not create the decorative camera backdrop in the minimal profile', async () => {
+    const { engine, runtime } = setup(undefined, 'minimal')
+    await runtime.preload()
+    const canvas = document.createElement('canvas')
+    document.body.append(canvas)
+    const started = runtime.start(canvas)
+    engine.emitCameraStatus('hasVideo')
+    await started
+
+    engine.emitAttach({} as MediaStream)
+
+    expect(document.querySelector('.camera-backdrop')).toBeNull()
     runtime.dispose()
   })
 
@@ -631,6 +653,153 @@ describe('createArRuntime', () => {
     runtime.dispose()
   })
 
+  it('keeps brief world tracking limitations safe and marks 500 ms as unsafe', async () => {
+    vi.useFakeTimers()
+    const { engine, runtime } = setup()
+    const snapshots: TrackingSnapshot[] = []
+    runtime.configureTrackingLab(worldRelativeLabConfig)
+    runtime.subscribeTracking((snapshot) => snapshots.push(snapshot))
+    await runtime.preload()
+    const started = runtime.start(document.createElement('canvas'))
+    engine.emitCameraStatus('hasVideo')
+    await started
+    engine.emitPipelineEvent('reality.trackingstatus', { reason: 'UNDEFINED', status: 'NORMAL' })
+    engine.emitPipelineEvent('reality.imagefound', {
+      name: 'pong-marker-v2',
+      position: { x: 1, y: 2, z: 3 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      scale: 2,
+      scaledHeight: 1,
+      scaledWidth: 0.75,
+    })
+
+    engine.emitPipelineEvent('reality.trackingstatus', {
+      reason: 'UNDEFINED',
+      status: 'LIMITED',
+    })
+    expect(snapshots.at(-1)).toMatchObject({
+      anchorStatus: 'aligned',
+      worldConfidence: 'degraded',
+    })
+    vi.advanceTimersByTime(499)
+    engine.emitPipelineEvent('reality.trackingstatus', { reason: 'UNDEFINED', status: 'NORMAL' })
+    expect(snapshots.at(-1)?.worldConfidence).toBe('healthy')
+
+    engine.emitPipelineEvent('reality.trackingstatus', {
+      reason: 'UNDEFINED',
+      status: 'LIMITED',
+    })
+    vi.advanceTimersByTime(250)
+    engine.emitPipelineEvent('reality.trackingstatus', {
+      reason: 'UNDEFINED',
+      status: 'LIMITED',
+    })
+    vi.advanceTimersByTime(249)
+    expect(snapshots.at(-1)?.worldConfidence).toBe('degraded')
+    vi.advanceTimersByTime(1)
+    expect(snapshots.at(-1)).toMatchObject({
+      anchorStatus: 'aligned',
+      worldConfidence: 'unsafe',
+    })
+
+    engine.emitPipelineEvent('reality.trackingstatus', { reason: 'UNDEFINED', status: 'NORMAL' })
+    expect(snapshots.at(-1)?.worldConfidence).toBe('healthy')
+    runtime.dispose()
+  })
+
+  it('queues a confirmed small correction until anchored content opens a safe window', async () => {
+    vi.useFakeTimers()
+    const content = new RecordingAnchoredContent()
+    content.allowAnchorCorrection = false
+    const { engine, runtime } = setup(content)
+    const snapshots: TrackingSnapshot[] = []
+    runtime.configureTrackingLab(worldRelativeLabConfig)
+    runtime.subscribeTracking((snapshot) => snapshots.push(snapshot))
+    await runtime.preload()
+    const started = runtime.start(document.createElement('canvas'))
+    engine.emitCameraStatus('hasVideo')
+    await started
+    engine.emitPipelineEvent('reality.trackingstatus', { reason: 'UNDEFINED', status: 'NORMAL' })
+    const pose = (x: number, dimensionScale = 1) => ({
+      name: 'pong-marker-v2',
+      position: { x, y: 2, z: 3 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      scale: 2,
+      scaledHeight: dimensionScale,
+      scaledWidth: 0.75 * dimensionScale,
+    })
+    engine.emitPipelineEvent('reality.imagefound', pose(1))
+    const root = engine.scene.getObjectByName('tracked-experience-root')
+    engine.emitPipelineEvent('reality.imagelost', { name: 'pong-marker-v2' })
+    vi.advanceTimersByTime(75)
+    engine.emitPipelineEvent('reality.imagefound', pose(1.1, 1.2))
+    vi.advanceTimersByTime(75)
+    engine.emitPipelineEvent('reality.imageupdated', pose(1.1, 1.2))
+    vi.advanceTimersByTime(75)
+    engine.emitPipelineEvent('reality.imageupdated', pose(1.1, 1.2))
+
+    expect(root?.position.x).toBe(1)
+    expect(snapshots.at(-1)).toMatchObject({
+      anchorCorrectionPending: true,
+      anchorStatus: 'aligned',
+    })
+
+    content.allowAnchorCorrection = true
+    engine.emitUpdate()
+    expect(snapshots.at(-1)?.anchorCorrectionPending).toBe(false)
+    vi.advanceTimersByTime(750)
+    engine.emitUpdate()
+    expect(root?.position.x).toBeCloseTo(1.1, 5)
+    expect(snapshots.at(-1)?.anchorStatus).toBe('aligned')
+    runtime.dispose()
+  })
+
+  it('discards a pending correction after three samples return to the accepted deadband', async () => {
+    vi.useFakeTimers()
+    const content = new RecordingAnchoredContent()
+    content.allowAnchorCorrection = false
+    const { engine, runtime } = setup(content)
+    const snapshots: TrackingSnapshot[] = []
+    runtime.configureTrackingLab(worldRelativeLabConfig)
+    runtime.subscribeTracking((snapshot) => snapshots.push(snapshot))
+    await runtime.preload()
+    const started = runtime.start(document.createElement('canvas'))
+    engine.emitCameraStatus('hasVideo')
+    await started
+    engine.emitPipelineEvent('reality.trackingstatus', { reason: 'UNDEFINED', status: 'NORMAL' })
+    const pose = (x: number, dimensionScale = 1) => ({
+      name: 'pong-marker-v2',
+      position: { x, y: 2, z: 3 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      scale: 2,
+      scaledHeight: dimensionScale,
+      scaledWidth: 0.75 * dimensionScale,
+    })
+    engine.emitPipelineEvent('reality.imagefound', pose(1))
+    engine.emitPipelineEvent('reality.imagelost', { name: 'pong-marker-v2' })
+    vi.advanceTimersByTime(75)
+    engine.emitPipelineEvent('reality.imagefound', pose(1.1, 1.2))
+    vi.advanceTimersByTime(75)
+    engine.emitPipelineEvent('reality.imageupdated', pose(1.1, 1.2))
+    vi.advanceTimersByTime(75)
+    engine.emitPipelineEvent('reality.imageupdated', pose(1.1, 1.2))
+    expect(snapshots.at(-1)?.anchorCorrectionPending).toBe(true)
+
+    vi.advanceTimersByTime(75)
+    engine.emitPipelineEvent('reality.imageupdated', pose(1))
+    vi.advanceTimersByTime(75)
+    engine.emitPipelineEvent('reality.imageupdated', pose(1))
+    vi.advanceTimersByTime(75)
+    engine.emitPipelineEvent('reality.imageupdated', pose(1))
+
+    expect(snapshots.at(-1)).toMatchObject({
+      anchorCorrectionPending: false,
+      anchorStatus: 'aligned',
+      anchorValidationOutcome: 'discarded',
+    })
+    runtime.dispose()
+  })
+
   it('validates divergent image updates and reanchors the relative field automatically', async () => {
     vi.useFakeTimers()
     const content = new RecordingAnchoredContent()
@@ -659,7 +828,7 @@ describe('createArRuntime', () => {
 
     engine.emitPipelineEvent('reality.imageupdated', pose(2, 2))
     expect(snapshots.at(-1)).toMatchObject({
-      anchorStatus: 'validating',
+      anchorStatus: 'aligned',
       candidateSampleCount: 1,
     })
     expect(content.dimensions.at(-1)).toEqual(initialDimensions)
@@ -696,7 +865,7 @@ describe('createArRuntime', () => {
     expect(events.filter((event) => event.kind === 'image-updated')).toHaveLength(3)
     expect(
       events.filter((event) => event.kind === 'anchor-state').map((event) => event.anchorStatus),
-    ).toEqual(expect.arrayContaining(['validating', 'reanchoring', 'aligned']))
+    ).toEqual(expect.arrayContaining(['reanchoring', 'aligned']))
     expect(events.map((event) => event.sequence)).toEqual(events.map((_, index) => index + 1))
     runtime.dispose()
   })
@@ -737,6 +906,7 @@ describe('createArRuntime', () => {
       reason: 'INSUFFICIENT_FEATURES',
       status: 'LIMITED',
     })
+    vi.advanceTimersByTime(500)
 
     expect(root?.position.x).toBe(1)
     expect(content.dimensions.at(-1)).toEqual(initialDimensions)
@@ -769,7 +939,7 @@ describe('createArRuntime', () => {
     vi.advanceTimersByTime(75)
     engine.emitPipelineEvent('reality.imagefound', pose(1.1, 1.2))
     expect(snapshots.at(-1)).toMatchObject({
-      anchorStatus: 'validating',
+      anchorStatus: 'aligned',
       candidateSampleCount: 1,
     })
     vi.advanceTimersByTime(75)
@@ -778,13 +948,13 @@ describe('createArRuntime', () => {
     engine.emitPipelineEvent('reality.imageupdated', pose(1.1, 1.2))
 
     expect(root?.position.x).toBe(1)
-    expect(snapshots.at(-1)?.anchorStatus).toBe('validating')
+    expect(snapshots.at(-1)?.anchorStatus).toBe('aligned')
     vi.advanceTimersByTime(375)
     engine.emitUpdate()
     expect(root?.position.x).toBeCloseTo(1.05, 5)
     expect(content.dimensions.at(-1)?.length).toBeCloseTo(1.1 / 0.26, 10)
     expect(content.dimensions.at(-1)?.width).toBeCloseTo(0.825 * (0.5 / 0.195), 10)
-    expect(snapshots.at(-1)?.anchorStatus).toBe('validating')
+    expect(snapshots.at(-1)?.anchorStatus).toBe('aligned')
     vi.advanceTimersByTime(375)
     engine.emitUpdate()
     expect(root?.position.x).toBeCloseTo(1.1, 5)
@@ -822,7 +992,7 @@ describe('createArRuntime', () => {
     vi.advanceTimersByTime(75)
     engine.emitPipelineEvent('reality.imageupdated', pose(2.5, 2.5))
     expect(snapshots.at(-1)).toMatchObject({
-      anchorStatus: 'validating',
+      anchorStatus: 'aligned',
       automaticReanchorCount: 0,
       candidateSampleCount: 1,
     })

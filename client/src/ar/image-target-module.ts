@@ -5,6 +5,7 @@ import { createCalibrationField, type CalibrationField } from './calibration-fie
 import type { CameraPipelineEvent, CameraPipelineModule, XrEngine } from './engine-contract'
 import type {
   AnchorStatus,
+  AnchorValidationOutcome,
   ImageTrackingEventCounts,
   ImageTrackingEventKind,
   TrackingLabConfig,
@@ -13,11 +14,13 @@ import type {
   TrackingTimelineEvent,
   TrackingTimelineEventKind,
   WorldTrackingStatus,
+  WorldTrackingConfidence,
 } from './types'
 
 export const IMAGE_TARGET_MODULE_NAME = 'pong-image-target'
 export const TARGET_LOSS_GRACE_MS = 300
-export const WORLD_LIMITED_GRACE_MS = 1500
+export const WORLD_UNSAFE_GRACE_MS = 500
+export const WORLD_LIMITED_FREEZE_MS = 1500
 export const ANCHOR_CORRECTION_MS = 750
 export const RELATIVE_VALIDATION_MIN_MS = 150
 export const RELATIVE_VALIDATION_MAX_MS = 600
@@ -226,15 +229,18 @@ export function createImageTargetController(
   let field: CalibrationField | null = null
   let resources: Array<THREE.BufferGeometry | THREE.Material> = []
   let pendingLoss: ReturnType<typeof setTimeout> | null = null
-  let pendingLimited: ReturnType<typeof setTimeout> | null = null
+  let pendingWorldUnsafe: ReturnType<typeof setTimeout> | null = null
+  let pendingWorldFreeze: ReturnType<typeof setTimeout> | null = null
   let lastPose: TrackingTargetPose | null = null
   let targetStatus: TrackingSnapshot['targetStatus'] = 'scanning'
   let worldStatus: WorldTrackingStatus = 'unavailable'
+  let worldConfidence: WorldTrackingConfidence = 'unavailable'
   let worldReason: string | null = isWorldMode ? 'INITIALIZING' : null
   let worldLimitedExceeded = false
   let recalibrationRequired = false
   let anchorSet = false
   let correction: AnchorCorrection | null = null
+  let pendingCorrectionPose: TrackingTargetPose | null = null
   let lastFrameAtMs: number | null = null
   let lastFrameSnapshotAtMs: number | null = null
   let framesPerSecond: number | null = null
@@ -252,6 +258,7 @@ export function createImageTargetController(
   let lastImageEvent: ImageTrackingEventKind | null = null
   let lastImageEventAtMs: number | null = null
   let waitingForFirstObservationAfterLoss = false
+  let anchorValidationOutcome: AnchorValidationOutcome | null = null
   const imageEventCounts: ImageTrackingEventCounts = { found: 0, lost: 0, updated: 0 }
 
   const metersPerSceneUnitForPose = (pose: TrackingTargetPose | null) =>
@@ -262,19 +269,23 @@ export function createImageTargetController(
   const timelineEvent = (
     kind: TrackingTimelineEventKind,
     pose: TrackingTargetPose | null = null,
+    validationOutcome: AnchorValidationOutcome | null = null,
   ) => {
     const eventPose = pose ?? lastPose
     timelineSequence += 1
     options.onTrackingTimelineEvent({
       anchorAngularErrorDegrees,
+      anchorCorrectionPending: pendingCorrectionPose !== null,
       anchorStatus,
       anchorTranslationErrorMeters,
+      anchorValidationOutcome: validationOutcome,
       candidateSampleCount: candidates.length,
       kind,
       pose: eventPose ? structuredClone(eventPose) : null,
       sequence: timelineSequence,
       targetName: eventPose?.name ?? null,
       timestampMs: Date.now(),
+      worldConfidence,
       worldStatus,
     })
   }
@@ -291,8 +302,10 @@ export function createImageTargetController(
     const metersPerSceneUnit = metersPerSceneUnitForPose(lastPose)
     options.onTrackingSnapshot({
       anchorAngularErrorDegrees,
+      anchorCorrectionPending: pendingCorrectionPose !== null,
       anchorStatus,
       anchorTranslationErrorMeters,
+      anchorValidationOutcome,
       automaticReanchorCount,
       candidateSampleCount: candidates.length,
       fieldCorners: field && root?.visible ? field.fieldCorners() : [],
@@ -305,6 +318,7 @@ export function createImageTargetController(
       targetPose: lastPose ? structuredClone(lastPose) : null,
       targetStatus,
       timestampMs: Date.now(),
+      worldConfidence,
       worldLimitedExceeded,
       worldReason,
       worldStatus,
@@ -318,19 +332,25 @@ export function createImageTargetController(
     }
   }
 
-  const cancelPendingLimited = () => {
-    if (pendingLimited !== null) {
-      clearTimeout(pendingLimited)
-      pendingLimited = null
+  const cancelWorldTrackingTimers = () => {
+    if (pendingWorldUnsafe !== null) {
+      clearTimeout(pendingWorldUnsafe)
+      pendingWorldUnsafe = null
+    }
+    if (pendingWorldFreeze !== null) {
+      clearTimeout(pendingWorldFreeze)
+      pendingWorldFreeze = null
     }
   }
 
   const disposeScene = () => {
     cancelPendingLoss()
-    cancelPendingLimited()
+    cancelWorldTrackingTimers()
     correction = null
+    pendingCorrectionPose = null
     candidates = []
     reanchorTransition = null
+    anchorValidationOutcome = null
     acceptedCalibration = null
     appliedDimensions = null
     if (root && scene) {
@@ -473,6 +493,10 @@ export function createImageTargetController(
     correction = null
   }
 
+  const discardPendingCorrection = () => {
+    pendingCorrectionPose = null
+  }
+
   const applyPoseImmediately = (pose: TrackingTargetPose) => {
     if (!root) {
       return
@@ -480,12 +504,14 @@ export function createImageTargetController(
     applyRootTransform(pose)
     commitCalibration({ dimensions: fieldDimensions(options.config, pose), pose })
     correction = null
+    discardPendingCorrection()
     reanchorTransition = null
     setContentOpacity(1)
     recalibrationRequired = false
     anchorTranslationErrorMeters = 0
     anchorAngularErrorDegrees = 0
     candidates = []
+    anchorValidationOutcome = null
     manualValidationRequested = false
     setAnchorStatus('aligned')
   }
@@ -518,7 +544,7 @@ export function createImageTargetController(
     options.anchoredContent?.setOpacity(opacity)
   }
 
-  const requestAnchorCorrection = (pose: TrackingTargetPose) => {
+  const startAnchorCorrection = (pose: TrackingTargetPose) => {
     if (!root) {
       return
     }
@@ -548,11 +574,20 @@ export function createImageTargetController(
       startedAtMs: now(),
     }
     recalibrationRequired = false
+    discardPendingCorrection()
     candidates = []
     manualValidationRequested = false
-    if (!isRefinedRelativeMode) {
-      setAnchorStatus('aligned')
+  }
+
+  const requestAnchorCorrection = (pose: TrackingTargetPose) => {
+    if (isRefinedRelativeMode && !(options.anchoredContent?.canApplyAnchorCorrection?.() ?? true)) {
+      pendingCorrectionPose = structuredClone(pose)
+      recalibrationRequired = false
+      candidates = []
+      manualValidationRequested = false
+      return
     }
+    startAnchorCorrection(pose)
   }
 
   const cancelReanchorTransition = () => {
@@ -573,8 +608,9 @@ export function createImageTargetController(
 
   const invalidateTrackingForLifecycle = (reason: string) => {
     cancelPendingLoss()
-    cancelPendingLimited()
+    cancelWorldTrackingTimers()
     cancelAnchorCorrection()
+    discardPendingCorrection()
     candidates = []
     cancelReanchorTransition()
     lastPose = null
@@ -585,8 +621,10 @@ export function createImageTargetController(
     anchorAngularErrorDegrees = null
     targetStatus = 'scanning'
     worldStatus = 'unavailable'
+    worldConfidence = 'unavailable'
     worldReason = reason
     worldLimitedExceeded = false
+    anchorValidationOutcome = null
     anchorSet = false
     acceptedCalibration = null
     appliedDimensions = null
@@ -608,6 +646,7 @@ export function createImageTargetController(
       return
     }
     correction = null
+    discardPendingCorrection()
     candidates = []
     manualValidationRequested = false
     recalibrationRequired = false
@@ -640,18 +679,21 @@ export function createImageTargetController(
     const shouldValidate =
       forceValidation ||
       manualValidationRequested ||
-      anchorStatus === 'validating' ||
+      candidates.length > 0 ||
+      pendingCorrectionPose !== null ||
       exceedsAnchorThreshold
     if (!shouldValidate) {
       return
     }
-    if (worldStatus !== 'normal' || reanchorTransition) {
+    if ((worldConfidence !== 'healthy' && worldConfidence !== 'degraded') || reanchorTransition) {
       candidates = []
       return
     }
 
-    recalibrationRequired = true
-    setAnchorStatus('validating')
+    if (manualValidationRequested) {
+      recalibrationRequired = true
+      setAnchorStatus('validating')
+    }
     const observedAtMs = now()
     const firstCandidate = candidates[0]
     const candidateWindowExpired =
@@ -661,6 +703,10 @@ export function createImageTargetController(
       posesAreConsistent(candidate.pose, pose),
     )
     if (candidateWindowExpired || !consistentWithWindow) {
+      if (candidates.length > 0) {
+        anchorValidationOutcome = 'discarded'
+        timelineEvent('anchor-validation', pose, 'discarded')
+      }
       candidates = []
     }
 
@@ -683,15 +729,32 @@ export function createImageTargetController(
       return
     }
     const confirmedErrors = calculateAnchorErrors(confirmedPose)
+    const wasManualValidation = manualValidationRequested
+    const hadPendingCorrection = pendingCorrectionPose !== null
     anchorTranslationErrorMeters = confirmedErrors.translationMeters
     anchorAngularErrorDegrees = confirmedErrors.angularDegrees
     if (
       confirmedErrors.translationMeters > options.config.fieldLengthMeters * 0.02 ||
       confirmedErrors.angularDegrees > 2
     ) {
+      anchorValidationOutcome = 'confirmed-large'
+      timelineEvent('anchor-validation', confirmedPose, 'confirmed-large')
       startLargeReanchor(confirmedPose)
+    } else if (hadPendingCorrection) {
+      anchorValidationOutcome = 'discarded'
+      timelineEvent('anchor-validation', confirmedPose, 'discarded')
+      discardPendingCorrection()
+      candidates = []
+      manualValidationRequested = false
+      recalibrationRequired = false
+      setAnchorStatus('aligned')
     } else {
+      anchorValidationOutcome = 'confirmed-small'
+      timelineEvent('anchor-validation', confirmedPose, 'confirmed-small')
       requestAnchorCorrection(confirmedPose)
+      if (wasManualValidation) {
+        setAnchorStatus('aligned')
+      }
     }
   }
 
@@ -795,35 +858,56 @@ export function createImageTargetController(
     worldStatus = tracking.status
     worldReason = tracking.reason
     if (worldStatus === 'limited') {
-      cancelAnchorCorrection()
-      candidates = []
-      if (isRefinedRelativeMode && !manualValidationRequested) {
-        recalibrationRequired = false
+      if (worldConfidence === 'healthy') {
+        worldConfidence = 'degraded'
+        timelineEvent('world-confidence')
       }
-      cancelReanchorTransition()
-      if (anchorSet && anchorStatus !== 'frozen') {
-        setAnchorStatus('aligned')
+      if (worldConfidence === 'degraded' && pendingWorldUnsafe === null) {
+        pendingWorldUnsafe = setTimeout(() => {
+          pendingWorldUnsafe = null
+          if (worldStatus !== 'limited' || worldConfidence !== 'degraded') {
+            return
+          }
+          worldConfidence = 'unsafe'
+          cancelAnchorCorrection()
+          discardPendingCorrection()
+          candidates = []
+          anchorValidationOutcome = 'discarded'
+          if (isRefinedRelativeMode && !manualValidationRequested) {
+            recalibrationRequired = false
+          }
+          cancelReanchorTransition()
+          if (anchorSet && anchorStatus !== 'frozen') {
+            setAnchorStatus('aligned')
+          }
+          timelineEvent('world-confidence')
+          emitSnapshot()
+        }, WORLD_UNSAFE_GRACE_MS)
       }
-      if (!isRefinedRelativeMode) {
-        cancelPendingLimited()
-      }
-      const shouldStartLimitedTimer = isRefinedRelativeMode
-        ? !pendingLimited && !worldLimitedExceeded
-        : true
-      if (shouldStartLimitedTimer) {
-        pendingLimited = setTimeout(() => {
-          pendingLimited = null
+      if (pendingWorldFreeze === null) {
+        pendingWorldFreeze = setTimeout(() => {
+          pendingWorldFreeze = null
+          if (worldStatus !== 'limited') {
+            return
+          }
           worldLimitedExceeded = true
-          correction = null
+          worldConfidence = 'unsafe'
+          cancelAnchorCorrection()
+          discardPendingCorrection()
           candidates = []
           cancelReanchorTransition()
           setAnchorStatus(anchorSet ? 'frozen' : 'uncalibrated')
+          timelineEvent('world-confidence')
           emitSnapshot()
-        }, WORLD_LIMITED_GRACE_MS)
+        }, WORLD_LIMITED_FREEZE_MS)
       }
     } else {
-      cancelPendingLimited()
+      cancelWorldTrackingTimers()
       worldLimitedExceeded = false
+      if (worldConfidence !== 'healthy') {
+        worldConfidence = 'healthy'
+        timelineEvent('world-confidence')
+      }
       if (anchorStatus === 'frozen') {
         setAnchorStatus(
           anchorSet ? (manualValidationRequested ? 'validating' : 'aligned') : 'uncalibrated',
@@ -844,6 +928,19 @@ export function createImageTargetController(
       }
     }
     lastFrameAtMs = frameAtMs
+
+    if (
+      pendingCorrectionPose &&
+      !correction &&
+      !reanchorTransition &&
+      (worldConfidence === 'healthy' || worldConfidence === 'degraded') &&
+      (options.anchoredContent?.canApplyAnchorCorrection?.() ?? true)
+    ) {
+      const nextPose = pendingCorrectionPose
+      pendingCorrectionPose = null
+      startAnchorCorrection(nextPose)
+      emitSnapshot()
+    }
 
     if (root && correction) {
       const activeCorrection = correction

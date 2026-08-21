@@ -47,8 +47,10 @@ Na implementação atual, `client/src/ar/` contém loaders do engine e do manife
 do target, o contrato mínimo validado do SDK, o runtime de câmera e um módulo de
 cena responsável pela raiz rastreada. O contrato `AnchoredContent` permite
 anexar um grupo Three.js, atualizar dimensões e opacidade por frame e realizar
-teardown sem levar regras do jogo para o módulo AR. Planos, cubos e geometria de
-calibração permanecem exclusivos do laboratório.
+teardown sem levar regras do jogo para o módulo AR. O método opcional
+`canApplyAnchorCorrection()` permite que um conteúdo restrinja correções pequenas
+a janelas visualmente seguras; a ausência do método equivale a `true`. Planos,
+cubos e geometria de calibração permanecem exclusivos do laboratório.
 
 `client/src/game/pong-core.ts` contém regras e estado determinísticos sem Three.js,
 DOM ou AR. `local-pong-experience.ts` compõe core, acumulador fixo de 1/60 s,
@@ -65,10 +67,13 @@ compacta somente de observação. A UI pode iniciar uma nova validação, mas n�
 escolhe nem aplica poses; essa responsabilidade permanece no adaptador AR. O
 adaptador mantém separadas a última pose observada e a calibração aceita, de
 modo que uma observação ainda não validada não redimensiona o campo. O
-controller do jogo lê somente a condição segura derivada da âncora e do SLAM.
-Ele pausa durante validação, reancoragem, congelamento ou tracking limitado e
-exige 750 ms estáveis mais uma contagem 3–2–1 antes de retomar, sem receber
-eventos crus do engine.
+controller do jogo lê somente a segurança e a causa derivadas da âncora, da
+confiança mundial e do lifecycle. O status cru do SLAM permanece observável,
+mas `worldConfidence` aplica 500 ms de histerese antes de declarar `unsafe`.
+Poses candidatas mantêm a âncora alinhada; correções pequenas aguardam uma janela
+do conteúdo, enquanto confirmações grandes entram em reancoragem. O controller
+não recebe eventos crus do engine e diferencia a retomada curta de `world` da
+retomada 3–2–1 exigida por `anchor` ou `lifecycle`.
 
 Cada sessão de câmera possui uma geração privada. Pause, retry, stop e nova
 sessão invalidam a geração anterior; callbacks atrasados são ignorados e a
@@ -78,6 +83,9 @@ O preenchimento decorativo das áreas externas ao canvas AR reutiliza o
 `MediaStream` entregue pelo engine em um vídeo independente e escurecido. Ele
 fica pausado durante aquisição e recuperação do target, não solicita outra
 câmera, não produz pose e é descartado junto com a sessão pelo runtime.
+No perfil de diagnóstico `minimal`, esse vídeo não é criado, filtros sobre o
+feed são removidos e o DPR máximo cai para 1,0; o perfil não muda tracking,
+game core ou regras.
 
 ## Estrutura física
 
@@ -134,6 +142,8 @@ a fase multiplayer justificar essa fronteira.
   futura camada de rede, sem projetar todo o protocolo agora.
 - O ADR-0003 autoriza `world-relative` e o Pong local no fluxo público como
   exceção provisória de apresentação; os gates formais permanecem abertos.
+- O ADR-0004 substitui a política imediata de interrupção por confiança com
+  histerese, correções em janelas seguras e retomada orientada por causa.
 - Antes do multiplayer, criar um ADR para Socket.IO versus WebSocket puro.
 
 ## Decisões que exigem ADR

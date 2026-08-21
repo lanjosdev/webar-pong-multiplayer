@@ -2,7 +2,7 @@ import { createXrEngineLoader } from './engine-loader'
 import { createImageTargetDataLoader } from './image-target-data'
 import { createArRuntime } from './runtime'
 import type { AnchoredContent } from './anchored-content'
-import type { ArRuntime } from './types'
+import type { ArRuntime, PerformanceProfile } from './types'
 
 export type { AnchoredContent } from './anchored-content'
 
@@ -11,10 +11,12 @@ export type {
   ArRuntimeListener,
   ArRuntimeState,
   AnchorStatus,
+  AnchorValidationOutcome,
   CameraDistanceMeters,
   FieldLengthMeters,
   ImageTrackingEventCounts,
   ImageTrackingEventKind,
+  PerformanceProfile,
   TrackingLabConfig,
   TrackingMode,
   TrackingSnapshot,
@@ -26,10 +28,11 @@ export type {
   TrackingVector3,
   TrialScenario,
   WorldTrackingStatus,
+  WorldTrackingConfidence,
 } from './types'
 
 export function createDefaultArRuntime(
-  options: { anchoredContent?: AnchoredContent } = {},
+  options: { anchoredContent?: AnchoredContent; performanceProfile?: PerformanceProfile } = {},
 ): ArRuntime {
   const loader = createXrEngineLoader({
     baseUrl: import.meta.env.BASE_URL,
@@ -46,6 +49,7 @@ export function createDefaultArRuntime(
     document,
     imageTargetLoader,
     loader,
+    ...(options.performanceProfile ? { performanceProfile: options.performanceProfile } : {}),
     window,
   })
 }

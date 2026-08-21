@@ -23,8 +23,11 @@ Os testes automatizados cobrem shell, loader, ordem da pipeline, lifecycle,
 conteúdo ancorado e teardown. O game core cobre avanço determinístico, paredes,
 colisões, aceleração, pontos, saques, contagem, primeiro a 3 e reinício. IA,
 arrasto relativo, clamp, bloqueios de input, placar e pausa/retomada após
-tracking inseguro possuem testes próprios. O build compara inventário e
-conteúdo dos artefatos copiados com o pacote instalado.
+tracking inseguro possuem testes próprios. A cobertura também verifica a
+histerese de 500 ms, congelamento em 1,5 s, correções pendentes, prioridade de
+causa, retomadas sem contagem duplicada, guia de aquisição e os perfis
+`standard`/`minimal`. O build compara inventário e conteúdo dos artefatos
+copiados com o pacote instalado.
 
 ## Validação móvel do bootstrap
 
@@ -129,20 +132,40 @@ extremidades virtuais com as marcas físicas no chão.
 
 No Android que reproduziu o deslocamento, use o campo de 1,0 x 0,5 m e execute
 dez ciclos de movimento rápido em `world-relative` e cinco ciclos equivalentes
-em `image-only`. Em cada ciclo, exporte o JSON v2 e registre separadamente:
+em `image-only`. Em cada ciclo, exporte o JSON v3 e registre separadamente:
 
 - `imagelost` até a primeira nova observação de imagem;
 - primeira observação até `aligned`;
 - maior erro de translação e rotação;
 - quantidade de reancoragens automáticas;
-- eventos `imagefound`, `imageupdated` e `imagelost`.
+- eventos `imagefound`, `imageupdated` e `imagelost`;
+- duração dos intervalos `worldConfidence: degraded` e `unsafe`;
+- resultados `confirmed-small`, `confirmed-large` e `discarded`, além de
+  correções pendentes.
 
-O refino lógico passa quando `validating` inicia na primeira nova pose após uma
-perda ou na primeira pose divergente sem perda, a
-reancoragem termina até 1 s após a terceira pose consistente, o erro final fica
-dentro de 2% e 2 graus e nenhum dos dez ciclos exige toque manual. Execute ainda
-três ensaios normais de 2 min; eles não podem produzir reancoragem falsa. A
-breve transição de opacidade só é aceitável durante recuperação confirmada.
+O refino lógico passa quando poses candidatas mantêm `aligned`, três amostras
+consistentes confirmam o resultado, uma correção pequena aguarda uma janela
+segura e uma reancoragem grande termina até 1 s depois da confirmação. O erro
+final deve ficar dentro de 2% e 2 graus e nenhum dos dez ciclos pode exigir toque
+manual. Execute ainda três ensaios normais de 2 min; eles não podem produzir
+validação ou reancoragem falsa. A breve transição de opacidade só é aceitável
+durante recuperação grande confirmada.
+
+### Estabilização e comparação de desempenho
+
+No Redmi Note 13 e iPhone 14, execute dez aquisições em `image-only` e
+`world-relative` a 0,75, 1,0, 1,25 e 1,5 m. Depois, em cada perfil
+`standard` e `minimal`, execute três sessões normais de 2 min e dez recuperações
+rápidas. Complete uma partida em portrait e landscape incluindo perda do
+marcador, `LIMITED`, reancoragem e background.
+
+O protocolo passa quando oscilações menores que 500 ms não pausam, não há
+validações/reancoragens falsas nas três sessões normais, a aquisição atinge 9 de
+10 em até 3 s e toda pausa observada possui causa sustentada e retomada correta.
+Adote `minimal` como padrão somente se eliminar falsas pausas ou degradação em
+pelo menos duas das três repetições sem prejudicar legibilidade; em empate,
+mantenha `standard`. Crie um target v3 somente se o v2 reprovar aquisição ou
+perder tracking de forma sustentada com a imagem inteira visível.
 
 ### Critérios de aprovação do experimento
 
@@ -165,22 +188,25 @@ depois ChArUco/AprilTag.
 Use o fluxo público, target de 195 x 260 mm, campo de 1,0 x 0,5 m e Redmi Note
 13. Execute uma vez em portrait e outra em landscape:
 
-1. inicie a câmera e confirme que o centro orienta apontar para o marcador sem
-   exibir **Estou pronto**;
+1. inicie a câmera e confirme que a interface orienta apontar para o marcador sem
+   exibir **Estou pronto**, que o guia 3:4 está visível e que a instrução fica
+   fora do marcador;
 2. adquira o target, confirme a instrução de manter o celular firme durante a
    estabilização e aguarde `Campo alinhado`;
 3. caminhe até a extremidade azul e toque em **Estou pronto**;
 4. confirme a contagem 3–2–1, arraste a raquete e complete uma partida até 3;
 5. durante a partida, retire apenas o target da câmera mantendo o SLAM normal e
    confirme que a física e o controle continuam ativos;
-6. provoque validação, reancoragem ou SLAM limitado e confirme que bola,
-   raquetes e relógios congelam imediatamente;
-7. recupere o tracking e confirme 750 ms estáveis mais 3–2–1 antes da retomada;
-8. durante a partida, envie a página ao background e retorne; confirme que o
+6. provoque `LIMITED` por menos de 500 ms e confirme que a partida continua;
+7. sustente `LIMITED` por pelo menos 500 ms e confirme uma única pausa; ao voltar
+   a `NORMAL`, confirme 750 ms estáveis mais “Retomando” por 1 s;
+8. provoque reancoragem grande e confirme pausa imediata, 750 ms estáveis e
+   retomada 3–2–1;
+9. durante a partida, envie a página ao background e retorne; confirme que o
    campo e a física permanecem bloqueados até uma nova pose do target e um novo
    SLAM `NORMAL`, que a UI volta a pedir o marcador e que depois seguem os
    750 ms e a contagem;
-9. finalize a partida, toque em **Jogar novamente** e confirme placar zerado e
+10. finalize a partida, toque em **Jogar novamente** e confirme placar zerado e
    nova contagem.
 
 A aceitação da apresentação exige uma partida completa sem avanço da física em

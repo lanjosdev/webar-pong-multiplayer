@@ -18,8 +18,10 @@ function snapshot(
 ): TrackingSnapshot {
   return {
     anchorAngularErrorDegrees: null,
+    anchorCorrectionPending: false,
     anchorStatus: 'aligned',
     anchorTranslationErrorMeters: null,
+    anchorValidationOutcome: null,
     automaticReanchorCount: 0,
     candidateSampleCount: 0,
     fieldCorners: corners(0),
@@ -32,6 +34,7 @@ function snapshot(
     targetPose: null,
     targetStatus: 'visible',
     timestampMs,
+    worldConfidence: 'healthy',
     worldLimitedExceeded: false,
     worldReason: null,
     worldStatus: 'normal',
@@ -48,6 +51,7 @@ describe('TrackingTrialRecorder', () => {
         browser: 'test-browser',
         device: 'test-device',
         orientation: 'portrait',
+        performanceProfile: 'standard',
         viewportHeight: 800,
         viewportWidth: 400,
       },
@@ -60,6 +64,7 @@ describe('TrackingTrialRecorder', () => {
         fieldCorners: corners(0.01),
         framesPerSecond: 30,
         targetStatus: 'lost',
+        worldConfidence: 'degraded',
         worldStatus: 'limited',
       }),
     )
@@ -72,8 +77,10 @@ describe('TrackingTrialRecorder', () => {
     expect(report.metrics.jitterP95Meters).toBeCloseTo(0.0067, 3)
     expect(report.metrics.driftMeters).toBeCloseTo(0.01, 5)
     expect(report.metrics.worldLimitedDurationMs).toBe(300)
+    expect(report.metrics.worldDegradedDurationMs).toBe(300)
+    expect(report.metrics.worldUnsafeDurationMs).toBe(0)
     expect(report.metrics.medianFramesPerSecond).toBe(60)
-    expect(report.schemaVersion).toBe(2)
+    expect(report.schemaVersion).toBe(3)
     expect(recorder.isRecording).toBe(false)
   })
 
@@ -85,6 +92,7 @@ describe('TrackingTrialRecorder', () => {
         browser: 'test-browser',
         device: 'test-device',
         orientation: 'portrait',
+        performanceProfile: 'standard',
         viewportHeight: 800,
         viewportWidth: 400,
       },
@@ -95,21 +103,26 @@ describe('TrackingTrialRecorder', () => {
       timestampMs: number,
       kind: TrackingTimelineEvent['kind'],
       anchorStatus: TrackingTimelineEvent['anchorStatus'],
+      anchorValidationOutcome: TrackingTimelineEvent['anchorValidationOutcome'] = null,
     ): TrackingTimelineEvent => ({
       anchorAngularErrorDegrees: kind === 'image-updated' ? 4 : null,
+      anchorCorrectionPending: false,
       anchorStatus,
       anchorTranslationErrorMeters: kind === 'image-updated' ? 0.08 : null,
+      anchorValidationOutcome,
       candidateSampleCount: anchorStatus === 'validating' ? 1 : 0,
       kind,
       pose: null,
       sequence,
       targetName: 'pong-marker-v2',
       timestampMs,
+      worldConfidence: 'healthy',
       worldStatus: 'normal',
     })
     recorder.addEvent(event(1, 1200, 'image-lost', 'aligned'))
     recorder.addEvent(event(2, 1500, 'image-updated', 'validating'))
     recorder.addEvent(event(3, 1800, 'anchor-state', 'aligned'))
+    recorder.addEvent(event(4, 1810, 'anchor-validation', 'aligned', 'confirmed-large'))
     recorder.add(
       snapshot(1800, {
         anchorAngularErrorDegrees: 4,
@@ -121,7 +134,7 @@ describe('TrackingTrialRecorder', () => {
 
     const report = recorder.finish(new Date(2000))
 
-    expect(report.events).toHaveLength(3)
+    expect(report.events).toHaveLength(4)
     expect(report.reacquisitions).toEqual([
       {
         alignedAtMs: 1800,
@@ -133,6 +146,7 @@ describe('TrackingTrialRecorder', () => {
     ])
     expect(report.metrics).toMatchObject({
       automaticReanchorCount: 1,
+      anchorValidationCounts: { confirmedLarge: 1, confirmedSmall: 0, discarded: 0 },
       imageEventCounts: { found: 1, lost: 1, updated: 3 },
       maximumAnchorAngularErrorDegrees: 4,
       maximumAnchorRealignmentMs: 300,
@@ -153,6 +167,7 @@ describe('TrackingTrialRecorder', () => {
         browser: 'test-browser',
         device: 'test-device',
         orientation: 'portrait',
+        performanceProfile: 'standard',
         viewportHeight: 800,
         viewportWidth: 400,
       },
@@ -180,6 +195,7 @@ describe('TrackingTrialRecorder', () => {
         browser: 'test-browser',
         device: 'test-device',
         orientation: 'portrait',
+        performanceProfile: 'standard',
         viewportHeight: 800,
         viewportWidth: 400,
       },
@@ -200,6 +216,7 @@ describe('TrackingTrialRecorder', () => {
         browser: 'test-browser',
         device: 'test-device',
         orientation: 'landscape',
+        performanceProfile: 'standard',
         viewportHeight: 400,
         viewportWidth: 800,
       },
