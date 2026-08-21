@@ -173,11 +173,14 @@ Use o fluxo público, target de 195 x 260 mm, campo de 1,0 x 0,5 m e Redmi Note
 5. provoque validação, reancoragem ou SLAM limitado e confirme que bola,
    raquetes e relógios congelam imediatamente;
 6. recupere o tracking e confirme 750 ms estáveis mais 3–2–1 antes da retomada;
-7. finalize a partida, toque em **Jogar novamente** e confirme placar zerado e
+7. durante a partida, envie a página ao background e retorne; confirme que o
+   campo e a física permanecem bloqueados até uma nova pose do target e um novo
+   SLAM `NORMAL`, seguidos dos 750 ms e da contagem;
+8. finalize a partida, toque em **Jogar novamente** e confirme placar zerado e
    nova contagem.
 
 A aceitação da apresentação exige uma partida completa sem avanço da física em
-tracking inseguro. Registrar vídeo nos passos 3 a 7 e JSON do laboratório apenas
+tracking inseguro. Registrar vídeo nos passos 3 a 8 e JSON do laboratório apenas
 se for necessário diagnosticar tracking. Esse smoke test não aprova os gates
 formais de tracking, desempenho ou ergonomia.
 

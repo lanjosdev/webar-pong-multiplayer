@@ -108,7 +108,11 @@ encerrar. Tipos e chamadas do `XR8` ficam confinados em `client/src/ar/`.
 - Teardown e nova inicialização sem duplicar listeners ou loops.
 
 O bootstrap pausa o engine em `visibilitychange` ao ir para background, retoma
-ao voltar ao primeiro plano e usa `stop()` no encerramento. Resize,
+ao voltar ao primeiro plano e usa `stop()` no encerramento. Pause, retry, stop e
+uma nova sessão invalidam pose, âncora, status mundial e relógio de frame. A
+retomada mantém o jogo inseguro até receber, na sessão atual, uma nova pose
+válida de `imagefound` ou `imageupdated` e um novo status mundial `NORMAL`;
+somente então começa a estabilidade de 750 ms. Resize,
 `orientationchange`, `visualViewport` e mudanças nas dimensões do vídeo
 recalculam o canvas contido e seu backing buffer; os listeners e módulos são
 removidos de forma idempotente. O vídeo decorativo é criado em `onAttach`, usa o
@@ -123,6 +127,12 @@ máxima de 1% do campo e 1 grau, confirmam a nova referência. Diferenças de at
 campo em 150 ms, aplicam automaticamente a nova âncora e reapresentam o campo em
 250 ms. SLAM `LIMITED` cancela a validação e qualquer correção; após 1,5 s, a
 âncora entra em `frozen` até o tracking voltar a `NORMAL`.
+
+Pose observada e calibração visual aceita são estados distintos. Atualizações
+brutas alimentam validação e telemetria, mas não redimensionam o Pong. A primeira
+pose aceita aplica transform e dimensões; correções pequenas interpolam ambos em
+conjunto; reancoragens grandes trocam ambos enquanto o conteúdo está oculto. Se
+uma transição for cancelada, transform e dimensões anteriores são restaurados.
 
 ## Laboratório de tracking
 
@@ -160,6 +170,10 @@ O tracking é seguro para a simulação somente com âncora `aligned` e SLAM
 relógios imediatamente. A recuperação exige 750 ms continuamente seguros e
 depois uma contagem 3–2–1. Reancoragens encadeadas reiniciam essa estabilidade,
 evitando retomada entre correções.
+
+Após background ou reinício da câmera, `aligned` e `normal` só podem representar
+observações novas da sessão atual. O estado anterior nunca é suficiente para
+liberar a simulação, mesmo que o engine preserve objetos ou callbacks antigos.
 
 ## Matriz de validação do tracking
 

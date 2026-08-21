@@ -26,6 +26,21 @@ function playingState(overrides: Partial<PongState> = {}): PongState {
 }
 
 describe('PongGameCore', () => {
+  it('copies state into a reusable buffer without replacing nested objects', () => {
+    const core = new PongGameCore()
+    const buffer = core.snapshot
+    const ball = buffer.ball
+    const score = buffer.score
+
+    core.start()
+    advance(core, 3.1)
+    core.copyStateInto(buffer)
+
+    expect(buffer.ball).toBe(ball)
+    expect(buffer.score).toBe(score)
+    expect(buffer).toEqual(core.snapshot)
+  })
+
   it('starts with a deterministic three-second serve toward the AI', () => {
     const core = new PongGameCore()
     const comparison = new PongGameCore()

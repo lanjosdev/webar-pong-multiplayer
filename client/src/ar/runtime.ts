@@ -52,6 +52,29 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Erro desconhecido do runtime WebAR.'
 }
 
+function initialTrackingSnapshot(): TrackingSnapshot {
+  return {
+    anchorAngularErrorDegrees: null,
+    anchorStatus: 'uncalibrated',
+    anchorTranslationErrorMeters: null,
+    automaticReanchorCount: 0,
+    candidateSampleCount: 0,
+    fieldCorners: [],
+    framesPerSecond: null,
+    imageEventCounts: { found: 0, lost: 0, updated: 0 },
+    lastImageEvent: null,
+    lastImageEventAtMs: null,
+    metersPerSceneUnit: 1,
+    recalibrationRequired: false,
+    targetPose: null,
+    targetStatus: 'scanning',
+    timestampMs: Date.now(),
+    worldLimitedExceeded: false,
+    worldReason: null,
+    worldStatus: 'unavailable',
+  }
+}
+
 export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
   const environmentIssue =
     options.isEnvironmentSupported ?? (() => defaultEnvironmentIssue(options.window))
@@ -73,6 +96,7 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
   let disposed = false
   let trackedTargetName: string | null = null
   let videoSize: { height: number; width: number } | null = null
+  let trackingGeneration = 0
   let trackingLabConfig: TrackingLabConfig = {
     cameraDistanceMeters: 1.25,
     enabled: false,
@@ -82,26 +106,7 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
     targetWidthMeters: 0.195,
     trialScenario: 'acquisition',
   }
-  let trackingSnapshot: TrackingSnapshot = {
-    anchorAngularErrorDegrees: null,
-    anchorStatus: 'uncalibrated',
-    anchorTranslationErrorMeters: null,
-    automaticReanchorCount: 0,
-    candidateSampleCount: 0,
-    fieldCorners: [],
-    framesPerSecond: null,
-    imageEventCounts: { found: 0, lost: 0, updated: 0 },
-    lastImageEvent: null,
-    lastImageEventAtMs: null,
-    metersPerSceneUnit: 1,
-    recalibrationRequired: false,
-    targetPose: null,
-    targetStatus: 'scanning',
-    timestampMs: Date.now(),
-    worldLimitedExceeded: false,
-    worldReason: null,
-    worldStatus: 'unavailable',
-  }
+  let trackingSnapshot = initialTrackingSnapshot()
 
   const emit = (nextState: ArRuntimeState) => {
     state = nextState
@@ -307,6 +312,7 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
   })
 
   const removePipeline = (stopEngine: boolean) => {
+    trackingGeneration += 1
     removeViewportListeners()
 
     if (engine && running && stopEngine) {
@@ -334,6 +340,7 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
     trackedTargetName = null
     videoSize = null
     modules = []
+    emitTracking(initialTrackingSnapshot())
     settlePendingStart(new Error('The XR session was stopped'))
   }
 
@@ -443,6 +450,9 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
         removePipeline(true)
       }
 
+      const sessionGeneration = ++trackingGeneration
+      emitTracking(initialTrackingSnapshot())
+
       videoSize = null
       canvas = nextCanvas
       resizeCanvas()
@@ -474,11 +484,31 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
           config: trackingLabConfig,
           engine,
           now: options.window.performance.now.bind(options.window.performance),
-          onFound: handleTargetFound,
-          onLost: handleTargetLost,
-          onScanning: handleTargetScanning,
-          onTrackingSnapshot: emitTracking,
-          onTrackingTimelineEvent: emitTrackingEvent,
+          onFound: (targetName) => {
+            if (sessionGeneration === trackingGeneration) {
+              handleTargetFound(targetName)
+            }
+          },
+          onLost: (targetName) => {
+            if (sessionGeneration === trackingGeneration) {
+              handleTargetLost(targetName)
+            }
+          },
+          onScanning: () => {
+            if (sessionGeneration === trackingGeneration) {
+              handleTargetScanning()
+            }
+          },
+          onTrackingSnapshot: (snapshot) => {
+            if (sessionGeneration === trackingGeneration && !disposed) {
+              emitTracking(snapshot)
+            }
+          },
+          onTrackingTimelineEvent: (event) => {
+            if (sessionGeneration === trackingGeneration && !disposed) {
+              emitTrackingEvent(event)
+            }
+          },
           targetName: imageTargetData.name,
         })
         modules = [

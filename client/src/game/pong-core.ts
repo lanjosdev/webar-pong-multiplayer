@@ -95,6 +95,25 @@ export class PongGameCore {
     return structuredClone(this.state)
   }
 
+  copyStateInto(target: PongState): void {
+    target.aiPaddleX = this.state.aiPaddleX
+    target.ball.radius = this.state.ball.radius
+    target.ball.velocityX = this.state.ball.velocityX
+    target.ball.velocityY = this.state.ball.velocityY
+    target.ball.x = this.state.ball.x
+    target.ball.y = this.state.ball.y
+    target.countdownRemainingSeconds = this.state.countdownRemainingSeconds
+    target.phase = this.state.phase
+    target.playerPaddleX = this.state.playerPaddleX
+    target.pointRemainingSeconds = this.state.pointRemainingSeconds
+    target.pointWinner = this.state.pointWinner
+    target.rallyHits = this.state.rallyHits
+    target.score.ai = this.state.score.ai
+    target.score.player = this.state.score.player
+    target.totalPoints = this.state.totalPoints
+    target.winner = this.state.winner
+  }
+
   start(): void {
     if (this.state.phase !== 'ready') {
       return

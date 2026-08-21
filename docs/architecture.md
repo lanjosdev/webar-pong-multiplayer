@@ -53,17 +53,26 @@ calibração permanecem exclusivos do laboratório.
 `client/src/game/pong-core.ts` contém regras e estado determinísticos sem Three.js,
 DOM ou AR. `local-pong-experience.ts` compõe core, acumulador fixo de 1/60 s,
 IA, renderer e política de suspensão. A UI transforma Pointer Events em
-deslocamento relativo e consome apenas o estado público do controller.
+deslocamento relativo e consome apenas o estado público do controller. O
+renderer reutiliza um buffer preenchido por `PongGameCore.copyStateInto()`; o
+snapshot imutável permanece disponível fora do loop, sem clonagem ou
+serialização por frame.
 
 No protótipo `world-relative`, o módulo de AR também é o proprietário da
 máquina de estados da âncora (`uncalibrated`, `aligned`, `validating`,
 `reanchoring` e `frozen`). O runtime expõe snapshots de estado e uma timeline
 compacta somente de observação. A UI pode iniciar uma nova validação, mas não
 escolhe nem aplica poses; essa responsabilidade permanece no adaptador AR. O
+adaptador mantém separadas a última pose observada e a calibração aceita, de
+modo que uma observação ainda não validada não redimensiona o campo. O
 controller do jogo lê somente a condição segura derivada da âncora e do SLAM.
 Ele pausa durante validação, reancoragem, congelamento ou tracking limitado e
 exige 750 ms estáveis mais uma contagem 3–2–1 antes de retomar, sem receber
 eventos crus do engine.
+
+Cada sessão de câmera possui uma geração privada. Pause, retry, stop e nova
+sessão invalidam a geração anterior; callbacks atrasados são ignorados e a
+retomada exige pose do target e SLAM normal observados novamente.
 
 O preenchimento decorativo das áreas externas ao canvas AR reutiliza o
 `MediaStream` entregue pelo engine em um vídeo independente e escurecido. Ele

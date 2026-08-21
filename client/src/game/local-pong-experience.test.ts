@@ -30,6 +30,17 @@ describe('createLocalPongExperience', () => {
     experience.dispose()
   })
 
+  it('does not notify the UI again while semantic view state stays unchanged', () => {
+    const experience = createLocalPongExperience()
+    const states: LocalPongViewState[] = []
+    experience.subscribe((state) => states.push(state))
+
+    updateFor(experience, 0.5)
+
+    expect(states).toHaveLength(1)
+    experience.dispose()
+  })
+
   it('moves the blue paddle by relative drag only while playing', () => {
     const experience = createLocalPongExperience()
     experience.setTrackingSafe(true)

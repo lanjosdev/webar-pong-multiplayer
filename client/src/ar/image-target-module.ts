@@ -27,9 +27,12 @@ export const LARGE_REANCHOR_FADE_IN_MS = 250
 export const TRACKING_EVENT_SAMPLE_MS = 100
 
 interface AnchorCorrection {
+  endDimensions: FieldDimensions
+  endPose: TrackingTargetPose
   endPosition: THREE.Vector3
   endQuaternion: THREE.Quaternion
   endScale: number
+  startDimensions: FieldDimensions
   startPosition: THREE.Vector3
   startQuaternion: THREE.Quaternion
   startScale: number
@@ -41,9 +44,20 @@ interface PoseCandidate {
   pose: TrackingTargetPose
 }
 
+interface FieldDimensions {
+  length: number
+  width: number
+}
+
+interface AcceptedCalibration {
+  dimensions: FieldDimensions
+  pose: TrackingTargetPose
+}
+
 interface ReanchorTransition {
   applied: boolean
-  endPose: TrackingTargetPose
+  endCalibration: AcceptedCalibration
+  originalCalibration: AcceptedCalibration
   originalPosition: THREE.Vector3
   originalQuaternion: THREE.Quaternion
   originalScale: number
@@ -188,13 +202,7 @@ function targetDimensions(
     : { height: pose.scaledHeight, width: pose.scaledWidth }
 }
 
-function fieldDimensions(
-  config: TrackingLabConfig,
-  pose: TrackingTargetPose,
-): {
-  length: number
-  width: number
-} {
+function fieldDimensions(config: TrackingLabConfig, pose: TrackingTargetPose): FieldDimensions {
   if (config.mode === 'world-absolute') {
     return { length: config.fieldLengthMeters, width: config.fieldLengthMeters / 2 }
   }
@@ -221,7 +229,7 @@ export function createImageTargetController(
   let pendingLimited: ReturnType<typeof setTimeout> | null = null
   let lastPose: TrackingTargetPose | null = null
   let targetStatus: TrackingSnapshot['targetStatus'] = 'scanning'
-  let worldStatus: WorldTrackingStatus = isWorldMode ? 'limited' : 'unavailable'
+  let worldStatus: WorldTrackingStatus = 'unavailable'
   let worldReason: string | null = isWorldMode ? 'INITIALIZING' : null
   let worldLimitedExceeded = false
   let recalibrationRequired = false
@@ -237,6 +245,8 @@ export function createImageTargetController(
   let candidates: PoseCandidate[] = []
   let manualValidationRequested = false
   let reanchorTransition: ReanchorTransition | null = null
+  let acceptedCalibration: AcceptedCalibration | null = null
+  let appliedDimensions: FieldDimensions | null = null
   let timelineSequence = 0
   let lastTimelineImageUpdatedAtMs: number | null = null
   let lastImageEvent: ImageTrackingEventKind | null = null
@@ -321,6 +331,8 @@ export function createImageTargetController(
     correction = null
     candidates = []
     reanchorTransition = null
+    acceptedCalibration = null
+    appliedDimensions = null
     if (root && scene) {
       scene.remove(root)
     }
@@ -411,11 +423,62 @@ export function createImageTargetController(
     anchorSet = true
   }
 
+  const cloneCalibration = (calibration: AcceptedCalibration): AcceptedCalibration => ({
+    dimensions: { ...calibration.dimensions },
+    pose: structuredClone(calibration.pose),
+  })
+
+  const updateTargetGeometry = (pose: TrackingTargetPose) => {
+    const target = targetDimensions(options.config, pose)
+    const referenceSize = Math.min(target.width, target.height)
+    targetSurface?.scale.set(target.width, target.height, 1)
+    targetOutline?.scale.set(target.width, target.height, 1)
+    originMarker?.position.set(0, 0, referenceSize * 0.075)
+    originMarker?.scale.setScalar(referenceSize * 0.15)
+  }
+
+  const applyFieldDimensions = (dimensions: FieldDimensions) => {
+    if (
+      appliedDimensions &&
+      appliedDimensions.width === dimensions.width &&
+      appliedDimensions.length === dimensions.length
+    ) {
+      return
+    }
+    field?.setDimensions(dimensions.width, dimensions.length)
+    options.anchoredContent?.setDimensions(dimensions.width, dimensions.length)
+    appliedDimensions = { ...dimensions }
+  }
+
+  const commitCalibration = (calibration: AcceptedCalibration) => {
+    updateTargetGeometry(calibration.pose)
+    applyFieldDimensions(calibration.dimensions)
+    acceptedCalibration = cloneCalibration(calibration)
+  }
+
+  const cancelAnchorCorrection = () => {
+    if (!correction) {
+      return
+    }
+    if (root) {
+      root.position.copy(correction.startPosition)
+      root.quaternion.copy(correction.startQuaternion)
+      root.scale.setScalar(correction.startScale)
+    }
+    if (acceptedCalibration) {
+      commitCalibration(acceptedCalibration)
+    } else {
+      applyFieldDimensions(correction.startDimensions)
+    }
+    correction = null
+  }
+
   const applyPoseImmediately = (pose: TrackingTargetPose) => {
     if (!root) {
       return
     }
     applyRootTransform(pose)
+    commitCalibration({ dimensions: fieldDimensions(options.config, pose), pose })
     correction = null
     reanchorTransition = null
     setContentOpacity(1)
@@ -450,18 +513,6 @@ export function createImageTargetController(
     return translationMeters <= options.config.fieldLengthMeters * 0.01 && angularDegrees <= 1
   }
 
-  const updateGeometry = (pose: TrackingTargetPose) => {
-    const target = targetDimensions(options.config, pose)
-    const referenceSize = Math.min(target.width, target.height)
-    targetSurface?.scale.set(target.width, target.height, 1)
-    targetOutline?.scale.set(target.width, target.height, 1)
-    originMarker?.position.set(0, 0, referenceSize * 0.075)
-    originMarker?.scale.setScalar(referenceSize * 0.15)
-    const dimensions = fieldDimensions(options.config, pose)
-    field?.setDimensions(dimensions.width, dimensions.length)
-    options.anchoredContent?.setDimensions(dimensions.width, dimensions.length)
-  }
-
   const setContentOpacity = (opacity: number) => {
     field?.setOpacity(opacity)
     options.anchoredContent?.setOpacity(opacity)
@@ -483,10 +534,14 @@ export function createImageTargetController(
       correction = null
       return
     }
+    const endDimensions = fieldDimensions(options.config, pose)
     correction = {
+      endDimensions,
+      endPose: structuredClone(pose),
       endPosition: desired.position,
       endQuaternion: desired.quaternion,
       endScale: desired.scale,
+      startDimensions: appliedDimensions ? { ...appliedDimensions } : { ...endDimensions },
       startPosition: root.position.clone(),
       startQuaternion: root.quaternion.clone(),
       startScale: root.scale.x,
@@ -510,13 +565,46 @@ export function createImageTargetController(
       root.position.copy(reanchorTransition.originalPosition)
       root.quaternion.copy(reanchorTransition.originalQuaternion)
       root.scale.setScalar(reanchorTransition.originalScale)
+      commitCalibration(reanchorTransition.originalCalibration)
     }
     reanchorTransition = null
     setContentOpacity(1)
   }
 
+  const invalidateTrackingForLifecycle = (reason: string) => {
+    cancelPendingLoss()
+    cancelPendingLimited()
+    cancelAnchorCorrection()
+    candidates = []
+    cancelReanchorTransition()
+    lastPose = null
+    waitingForFirstObservationAfterLoss = false
+    manualValidationRequested = false
+    recalibrationRequired = false
+    anchorTranslationErrorMeters = null
+    anchorAngularErrorDegrees = null
+    targetStatus = 'scanning'
+    worldStatus = 'unavailable'
+    worldReason = reason
+    worldLimitedExceeded = false
+    anchorSet = false
+    acceptedCalibration = null
+    appliedDimensions = null
+    lastFrameAtMs = null
+    lastFrameSnapshotAtMs = null
+    framesPerSecond = null
+    lastTimelineImageUpdatedAtMs = null
+    lastImageEvent = 'scanning'
+    lastImageEventAtMs = Date.now()
+    if (root) {
+      root.visible = false
+    }
+    setAnchorStatus('uncalibrated')
+    emitSnapshot()
+  }
+
   const startLargeReanchor = (pose: TrackingTargetPose) => {
-    if (!root) {
+    if (!root || !acceptedCalibration) {
       return
     }
     correction = null
@@ -525,7 +613,11 @@ export function createImageTargetController(
     recalibrationRequired = false
     reanchorTransition = {
       applied: false,
-      endPose: structuredClone(pose),
+      endCalibration: {
+        dimensions: fieldDimensions(options.config, pose),
+        pose: structuredClone(pose),
+      },
+      originalCalibration: cloneCalibration(acceptedCalibration),
       originalPosition: root.position.clone(),
       originalQuaternion: root.quaternion.clone(),
       originalScale: root.scale.x,
@@ -536,7 +628,7 @@ export function createImageTargetController(
   }
 
   const validateRelativePose = (pose: TrackingTargetPose, forceValidation: boolean) => {
-    if (!root || !anchorSet || !isRefinedRelativeMode) {
+    if (!root || !anchorSet || !isRefinedRelativeMode || correction) {
       return
     }
     const errors = calculateAnchorErrors(pose)
@@ -620,7 +712,6 @@ export function createImageTargetController(
     cancelPendingLoss()
     lastPose = pose
     targetStatus = 'visible'
-    updateGeometry(pose)
 
     if (!isWorldMode || !anchorSet) {
       applyPoseImmediately(pose)
@@ -704,7 +795,7 @@ export function createImageTargetController(
     worldStatus = tracking.status
     worldReason = tracking.reason
     if (worldStatus === 'limited') {
-      correction = null
+      cancelAnchorCorrection()
       candidates = []
       if (isRefinedRelativeMode && !manualValidationRequested) {
         recalibrationRequired = false
@@ -726,7 +817,7 @@ export function createImageTargetController(
           correction = null
           candidates = []
           cancelReanchorTransition()
-          setAnchorStatus('frozen')
+          setAnchorStatus(anchorSet ? 'frozen' : 'uncalibrated')
           emitSnapshot()
         }, WORLD_LIMITED_GRACE_MS)
       }
@@ -734,7 +825,9 @@ export function createImageTargetController(
       cancelPendingLimited()
       worldLimitedExceeded = false
       if (anchorStatus === 'frozen') {
-        setAnchorStatus(manualValidationRequested ? 'validating' : 'aligned')
+        setAnchorStatus(
+          anchorSet ? (manualValidationRequested ? 'validating' : 'aligned') : 'uncalibrated',
+        )
       }
     }
     timelineEvent('world-status')
@@ -753,16 +846,44 @@ export function createImageTargetController(
     lastFrameAtMs = frameAtMs
 
     if (root && correction) {
-      const progress = Math.min(1, (frameAtMs - correction.startedAtMs) / ANCHOR_CORRECTION_MS)
-      root.position.lerpVectors(correction.startPosition, correction.endPosition, progress)
-      root.quaternion.slerpQuaternions(
-        correction.startQuaternion,
-        correction.endQuaternion,
+      const activeCorrection = correction
+      const progress = Math.min(
+        1,
+        (frameAtMs - activeCorrection.startedAtMs) / ANCHOR_CORRECTION_MS,
+      )
+      root.position.lerpVectors(
+        activeCorrection.startPosition,
+        activeCorrection.endPosition,
         progress,
       )
-      const scale = THREE.MathUtils.lerp(correction.startScale, correction.endScale, progress)
+      root.quaternion.slerpQuaternions(
+        activeCorrection.startQuaternion,
+        activeCorrection.endQuaternion,
+        progress,
+      )
+      const scale = THREE.MathUtils.lerp(
+        activeCorrection.startScale,
+        activeCorrection.endScale,
+        progress,
+      )
       root.scale.setScalar(scale)
+      applyFieldDimensions({
+        length: THREE.MathUtils.lerp(
+          activeCorrection.startDimensions.length,
+          activeCorrection.endDimensions.length,
+          progress,
+        ),
+        width: THREE.MathUtils.lerp(
+          activeCorrection.startDimensions.width,
+          activeCorrection.endDimensions.width,
+          progress,
+        ),
+      })
       if (progress === 1) {
+        commitCalibration({
+          dimensions: activeCorrection.endDimensions,
+          pose: activeCorrection.endPose,
+        })
         correction = null
         anchorTranslationErrorMeters = 0
         anchorAngularErrorDegrees = 0
@@ -779,7 +900,8 @@ export function createImageTargetController(
       const progress = Math.min(1, (frameAtMs - transition.startedAtMs) / phaseDuration)
       setContentOpacity(transition.phase === 'fading-out' ? 1 - progress : progress)
       if (progress === 1 && transition.phase === 'fading-out') {
-        applyRootTransform(transition.endPose)
+        applyRootTransform(transition.endCalibration.pose)
+        commitCalibration(transition.endCalibration)
         transition.applied = true
         transition.phase = 'fading-in'
         transition.startedAtMs = frameAtMs
@@ -812,18 +934,13 @@ export function createImageTargetController(
       ],
       name: IMAGE_TARGET_MODULE_NAME,
       onDetach: disposeScene,
-      onPaused: () => {
-        cancelPendingLoss()
-        correction = null
-        candidates = []
-        cancelReanchorTransition()
-        if (root) {
-          root.visible = false
-        }
-      },
+      onPaused: () => invalidateTrackingForLifecycle('LIFECYCLE_PAUSED'),
       onRemove: disposeScene,
       onResume: handleScanning,
-      onStart: initializeScene,
+      onStart: () => {
+        initializeScene()
+        invalidateTrackingForLifecycle('SESSION_STARTED')
+      },
       onUpdate: updateFrame,
     },
     recalibrate() {

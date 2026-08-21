@@ -51,6 +51,12 @@ timeline schema v2. O refino está automatizado, mas sua aprovação continua
 dependente de dez recuperações rápidas e três ensaios normais de 2 min no
 aparelho real.
 
+O hardening do protótipo agora invalida tracking antigo após pause, retry, stop
+ou nova sessão, exige pose e SLAM `NORMAL` novos antes da retomada, mantém
+dimensões brutas fora do campo até a calibração ser aceita e remove clonagem e
+serialização do loop por frame do Pong. A cobertura automatizada foi ampliada;
+o comportamento físico e térmico continua pendente nos aparelhos reais.
+
 Para preparar a apresentação, o ADR-0003 abriu uma trilha excepcional da Fase 2.
 O fluxo público adota provisoriamente o target de 195 x 260 mm, campo de
 1,0 x 0,5 m e `world-relative`. O Pong local está implementado com controle por
@@ -134,6 +140,10 @@ gameplay e rede.
   provisório.
 - [x] Refinar `world-relative` com validação de `imagefound`/`imageupdated`,
   reancoragem automática, estados independentes da âncora e telemetria v2.
+- [x] Invalidar tracking entre sessões e após background, exigindo nova pose e
+  novo SLAM normal antes de liberar a retomada.
+- [x] Separar pose observada de calibração aceita para impedir que amostras não
+  confirmadas redimensionem o campo.
 - [ ] Validar o refino relativo em dez recuperações rápidas e três ensaios
   normais de 2 min no Android que reproduziu a divergência.
 - [ ] Executar a matriz A4 e decidir se o modo híbrido deve ser adotado no fluxo
@@ -157,6 +167,8 @@ gameplay e rede.
 - [x] Implementar estados de início, partida, ponto, fim e reinício.
 - [x] Integrar o estado lógico à cena ancorada.
 - [x] Criar testes unitários para regras e colisões.
+- [x] Remover clonagem de snapshots e serialização JSON do loop por frame,
+  preservando snapshots imutáveis fora do caminho quente.
 - [ ] Validar escala, legibilidade e ergonomia em aparelho.
 - [ ] Medir FPS, estabilidade e comportamento térmico em sessão prolongada.
 

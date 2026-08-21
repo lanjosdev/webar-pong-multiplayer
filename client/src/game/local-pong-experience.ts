@@ -116,6 +116,7 @@ export function createLocalPongExperience(): LocalPongExperience {
     ballMaterial,
   ]
   const listeners = new Set<LocalPongListener>()
+  const renderState = core.snapshot
   let accumulatorSeconds = 0
   let disposed = false
   let playerTargetX = 0
@@ -123,50 +124,62 @@ export function createLocalPongExperience(): LocalPongExperience {
   let stableTrackingSeconds = 0
   let trackingPaused = false
   let recoveryCountdownSeconds: number | null = null
-  let lastViewSignature = ''
+  let lastViewState: LocalPongViewState | null = null
 
   const readyAvailable = () => trackingSafe && stableTrackingSeconds >= TRACKING_STABILITY_SECONDS
 
-  const viewState = (): LocalPongViewState => {
-    const state = core.snapshot
-    const countdown = trackingPaused
+  const currentCountdown = () =>
+    trackingPaused
       ? recoveryCountdownSeconds === null
         ? null
         : Math.max(1, Math.ceil(recoveryCountdownSeconds))
-      : state.phase === 'countdown'
-        ? Math.max(1, Math.ceil(state.countdownRemainingSeconds))
+      : renderState.phase === 'countdown'
+        ? Math.max(1, Math.ceil(renderState.countdownRemainingSeconds))
         : null
+
+  const viewState = (): LocalPongViewState => {
     return {
-      aiScore: state.score.ai,
-      countdown,
-      phase: state.phase,
-      playerScore: state.score.player,
-      pointWinner: state.pointWinner,
+      aiScore: renderState.score.ai,
+      countdown: currentCountdown(),
+      phase: renderState.phase,
+      playerScore: renderState.score.player,
+      pointWinner: renderState.pointWinner,
       readyAvailable: readyAvailable(),
       trackingPaused,
       trackingSafe,
-      winner: state.winner,
+      winner: renderState.winner,
     }
   }
 
   const emit = (force = false) => {
-    const state = viewState()
-    const signature = JSON.stringify(state)
-    if (!force && signature === lastViewSignature) {
+    const countdown = currentCountdown()
+    if (
+      !force &&
+      lastViewState &&
+      lastViewState.aiScore === renderState.score.ai &&
+      lastViewState.countdown === countdown &&
+      lastViewState.phase === renderState.phase &&
+      lastViewState.playerScore === renderState.score.player &&
+      lastViewState.pointWinner === renderState.pointWinner &&
+      lastViewState.readyAvailable === readyAvailable() &&
+      lastViewState.trackingPaused === trackingPaused &&
+      lastViewState.trackingSafe === trackingSafe &&
+      lastViewState.winner === renderState.winner
+    ) {
       return
     }
-    lastViewSignature = signature
+    const state = viewState()
+    lastViewState = state
     for (const listener of listeners) {
       listener(state)
     }
   }
 
   const render = () => {
-    const state = core.snapshot
-    playerPaddle.position.x = state.playerPaddleX
-    aiPaddle.position.x = state.aiPaddleX
-    ball.position.x = state.ball.x
-    ball.position.y = state.ball.y
+    playerPaddle.position.x = renderState.playerPaddleX
+    aiPaddle.position.x = renderState.aiPaddleX
+    ball.position.x = renderState.ball.x
+    ball.position.y = renderState.ball.y
   }
 
   const updateTrackingRecovery = (deltaSeconds: number): boolean => {
@@ -191,6 +204,7 @@ export function createLocalPongExperience(): LocalPongExperience {
   }
 
   render()
+  lastViewState = viewState()
 
   return {
     dispose() {
@@ -205,11 +219,10 @@ export function createLocalPongExperience(): LocalPongExperience {
       disposed = true
     },
     movePlayerBy(deltaNormalized) {
-      const state = core.snapshot
       if (
         disposed ||
         !Number.isFinite(deltaNormalized) ||
-        state.phase !== 'playing' ||
+        renderState.phase !== 'playing' ||
         trackingPaused ||
         !trackingSafe
       ) {
@@ -228,6 +241,7 @@ export function createLocalPongExperience(): LocalPongExperience {
       }
       playerTargetX = 0
       core.restart()
+      core.copyStateInto(renderState)
       trackingPaused = false
       recoveryCountdownSeconds = null
       accumulatorSeconds = 0
@@ -256,7 +270,7 @@ export function createLocalPongExperience(): LocalPongExperience {
       trackingSafe = safe
       stableTrackingSeconds = 0
       if (!safe) {
-        const phase = core.snapshot.phase
+        const phase = renderState.phase
         trackingPaused = phase !== 'ready' && phase !== 'finished'
         recoveryCountdownSeconds = null
         accumulatorSeconds = 0
@@ -264,11 +278,12 @@ export function createLocalPongExperience(): LocalPongExperience {
       emit(true)
     },
     start() {
-      if (disposed || !readyAvailable() || core.snapshot.phase !== 'ready') {
+      if (disposed || !readyAvailable() || renderState.phase !== 'ready') {
         return
       }
       playerTargetX = 0
       core.start()
+      core.copyStateInto(renderState)
       accumulatorSeconds = 0
       emit(true)
     },
@@ -293,6 +308,7 @@ export function createLocalPongExperience(): LocalPongExperience {
           accumulatorSeconds -= FIXED_STEP_SECONDS
         }
       }
+      core.copyStateInto(renderState)
       render()
       emit()
     },
