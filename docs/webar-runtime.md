@@ -2,9 +2,10 @@
 
 ## Escopo atual
 
-Validar o 8th Wall com um Image Target antes de implementar o Pong. O adapter
-usa as APIs e eventos confirmados para `@8thwall/engine-binary@1.0.0`;
-alterações de versão exigem nova consulta às fontes oficiais.
+Sustentar o Pong local ancorado e manter o laboratório formal de tracking. O
+adapter usa as APIs e eventos confirmados para
+`@8thwall/engine-binary@1.0.0`; alterações de versão exigem nova consulta às
+fontes oficiais.
 
 ## Restrição de plataforma e distribuição
 
@@ -18,12 +19,13 @@ inventário e os hashes SHA-256 são comparados byte a byte com o pacote instala
 O bootstrap carrega `xr.js` pelo `BASE_URL` do Vite e pré-carrega o chunk
 `slam`. A pipeline registra, nesta ordem, `GlTextureRenderer`, `XrController`,
 `Threejs`, o módulo local do target e o módulo de lifecycle.
-No modo público, `disableWorldTracking: true` e o `imageTargetData` são
-configurados antes de criar a pipeline e executar o engine. O laboratório
-opt-in `?trackingLab=1`, aceito pelo ADR-0002, também pode iniciar os modos
-`world-relative` e `world-absolute`; essa escolha ocorre antes de criar a
-pipeline e não muda durante uma sessão. `Threejs` não renderiza uma segunda
-textura de câmera; o feed permanece responsabilidade de `GlTextureRenderer`.
+No modo público, `world-relative`, escala responsiva e o `imageTargetData` são
+configurados antes de criar a pipeline e executar o engine. O padrão físico é
+195 x 260 mm, com campo de 1,0 x 0,5 m. O laboratório opt-in
+`?trackingLab=1` também pode iniciar `image-only` e `world-absolute`; essa
+escolha ocorre antes de criar a pipeline e não muda durante uma sessão.
+`Threejs` não renderiza uma segunda textura de câmera; o feed permanece
+responsabilidade de `GlTextureRenderer`.
 
 Não use como referência de implementação APIs, credenciais ou fluxo de deploy
 exclusivos da plataforma hospedada legada. Consulte
@@ -34,8 +36,8 @@ exclusivos da plataforma hospedada legada. Consulte
 - O target físico define origem, orientação e escala da experiência.
 - O campo poderá ultrapassar os limites físicos do target.
 - Android e iOS são plataformas prioritárias.
-- World Tracking/SLAM permanece fora do fluxo público e existe como protótipo
-  mensurável somente no laboratório da Fase 1.
+- World Tracking/SLAM relativo é o padrão público provisório do protótipo pelo
+  ADR-0003; sua aprovação definitiva continua pendente no gate da Fase 1.
 - Portrait e landscape são suportados responsivamente; a rotação não é
   bloqueada.
 - A câmera só é solicitada após o usuário tocar em `Iniciar experiência`.
@@ -50,8 +52,8 @@ exclusivos da plataforma hospedada legada. Consulte
   mantém o backing buffer em alta resolução, enquanto propriedades CSS
   protegidas preservam o tamanho lógico calculado e evitam ampliação pelo DPR.
 - O target padrão confirmado é `pong-marker-v2`, planar, 3:4 e impresso em
-  150 x 200, 195 x 260 ou 180 x 240 mm numa folha A4 em escala 100%; papel
-  fosco e base rígida são recomendados. O teste
+  195 x 260 mm numa folha A4 em escala 100%; 150 x 200 e 180 x 240 mm ficam
+  como referências do laboratório. Papel fosco e base rígida são recomendados. O teste
   físico qualitativo apresentou resultado muito melhor que o v1. O resultado
   anterior permanece documentado, mas os assets do v1 foram removidos do
   repositório e do build.
@@ -67,9 +69,9 @@ exclusivos da plataforma hospedada legada. Consulte
 - `camera-denied`: permissão ausente com orientação de recuperação.
 - `searching-target`: câmera ativa, aguardando o marcador.
 - `target-found`: pose válida e conteúdo disponível.
-- `target-lost`: perda confirmada após tolerância de 300 ms. No modo público e
-  em `image-only`, o conteúdo é ocultado. Nos modos híbridos, a geometria
-  permanece na âncora mundial e a observação do target muda para `lost`.
+- `target-lost`: perda confirmada após tolerância de 300 ms. Em `image-only`, o
+  conteúdo é ocultado. No fluxo público `world-relative` e nos modos híbridos,
+  a geometria permanece na âncora mundial e a observação muda para `lost`.
 - `recovering`: tentativa de reaquisição ou retomada de lifecycle.
 - `fatal-error`: falha não recuperável com ação clara para o usuário.
 
@@ -84,6 +86,8 @@ perdido, SLAM normal e campo ainda visível simultaneamente.
 
 - O adaptador 8th Wall converte dados do SDK para uma pose interna conhecida.
 - A raiz AR posiciona o conteúdo Three.js.
+- Conteúdo jogável entra pela interface `AnchoredContent`; o módulo AR atualiza
+  dimensões, opacidade e frame sem conhecer regras ou placar.
 - O laboratório recebe snapshots independentes de pose, visibilidade do target,
   status do SLAM, FPS e cantos do campo; a UI não acessa o SDK.
 - O game core não recebe ruído de tracking nem depende do target.
@@ -143,6 +147,20 @@ geometria reportada pelo engine. O modo absoluto usa metros e orienta o usuário
 a mover o aparelho lentamente para frente e para trás enquanto a escala é
 estimada.
 
+Planos do target, cubos, campo de calibração e telemetria visual só são criados
+quando o laboratório está habilitado. O fluxo público anexa somente o renderer
+do Pong à raiz rastreada e aplica a ele as transições de opacidade de
+reancoragem.
+
+## Segurança do jogo local
+
+O tracking é seguro para a simulação somente com âncora `aligned` e SLAM
+`normal`; a visibilidade do target não entra nessa condição. `validating`,
+`reanchoring`, `frozen`, SLAM limitado e lifecycle pausado congelam posições e
+relógios imediatamente. A recuperação exige 750 ms continuamente seguros e
+depois uma contagem 3–2–1. Reancoragens encadeadas reiniciam essa estabilidade,
+evitando retomada entre correções.
+
 ## Matriz de validação do tracking
 
 Para cada aparelho selecionado, registrar:
@@ -169,10 +187,10 @@ Para cada aparelho selecionado, registrar:
 FPS mínimo, budget térmico e duração final de produção continuam TBD; o ensaio
 de 10 minutos coleta a evidência necessária para defini-los.
 
-## Gate para adotar SLAM no fluxo público
+## Gate para aprovar definitivamente o SLAM
 
-O protótipo foi autorizado pelo usuário e documentado no ADR-0002 após a
-limitação qualitativa ser reproduzida. A adoção no fluxo público ainda exige:
+O ADR-0003 autorizou o uso público provisório para apresentação. Transformar
+essa exceção em decisão definitiva ainda exige:
 
 1. medir o comportamento do Image Tracking isolado;
 2. reproduzir uma limitação relevante ao produto;

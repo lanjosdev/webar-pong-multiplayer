@@ -24,6 +24,11 @@ como referência de posição, orientação e escala, não como limite visual do
   principal da experiência.
 - Campo do Pong definido em 1,0 x 0,5 m; campos maiores não fazem mais parte
   da experiência nem da matriz ativa de validação.
+- Target físico padrão de demonstração em 195 x 260 mm.
+- `world-relative` como tracking público provisório do protótipo, sem aprovação
+  do gate formal da Fase 1.
+- Jogador azul em `-Y`, IA vermelha em `+Y`, primeiro a 5 pontos e controle por
+  arrasto relativo.
 - Evolução obrigatória por fases: WebAR, Pong local e multiplayer.
 - Multiplayer não faz parte das duas primeiras fases.
 - Cada aparelho executará seu próprio tracking; câmera e pose AR não trafegam
@@ -95,8 +100,8 @@ avaliados após medições reais de latência e instabilidade.
 - Servidor ou protocolo multiplayer.
 - Autenticação e persistência.
 - Escala horizontal do backend.
-- Adoção de World Tracking/SLAM no fluxo público antes da evidência do
-  laboratório aceito pelo ADR-0002.
+- Refinamentos profundos de tracking, novos ensaios formais e aprovação
+  definitiva do SLAM para produção.
 - Physics engine.
 - Aplicativo nativo.
 
@@ -104,10 +109,10 @@ avaliados após medições reais de latência e instabilidade.
 
 - Público-alvo e contexto de uso.
 - Jornada completa de entrada e descoberta da experiência.
-- Modelo dos controles touch.
+- Refinamento ergonômico dos controles touch.
 - Identidade visual, áudio e feedback háptico.
-- Duração e regras completas da partida.
-- Comportamento desejado quando o target sai do enquadramento.
+- Balanceamento futuro das regras da partida.
+- Critérios definitivos de recuperação quando target e SLAM degradam juntos.
 - Critérios quantitativos de sucesso.
 - Aparelhos e versões mínimas suportados.
 - Estratégia de distribuição do Image Target.

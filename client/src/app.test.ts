@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { Group } from 'three'
 
 import type {
   ArRuntime,
@@ -10,6 +11,71 @@ import type {
   TrackingTimelineEventListener,
 } from './ar'
 import { mountApp } from './app'
+import type {
+  LocalPongExperience,
+  LocalPongListener,
+  LocalPongViewState,
+} from './game/local-pong-experience'
+
+class FakePongExperience implements LocalPongExperience {
+  readonly object3d = new Group()
+  disposeCount = 0
+  moveDeltas: number[] = []
+  restartCount = 0
+  startCount = 0
+  trackingSafety: boolean[] = []
+  private readonly listeners = new Set<LocalPongListener>()
+  private state: LocalPongViewState = {
+    aiScore: 0,
+    countdown: null,
+    phase: 'ready',
+    playerScore: 0,
+    pointWinner: null,
+    readyAvailable: false,
+    trackingPaused: false,
+    trackingSafe: false,
+    winner: null,
+  }
+
+  dispose(): void {
+    this.disposeCount += 1
+  }
+
+  movePlayerBy(deltaNormalized: number): void {
+    this.moveDeltas.push(deltaNormalized)
+  }
+
+  restart(): void {
+    this.restartCount += 1
+  }
+
+  setDimensions(): void {}
+
+  setOpacity(): void {}
+
+  setTrackingSafe(safe: boolean): void {
+    this.trackingSafety.push(safe)
+  }
+
+  start(): void {
+    this.startCount += 1
+  }
+
+  subscribe(listener: LocalPongListener): () => void {
+    this.listeners.add(listener)
+    listener(this.state)
+    return () => this.listeners.delete(listener)
+  }
+
+  update(): void {}
+
+  emit(state: Partial<LocalPongViewState>): void {
+    this.state = { ...this.state, ...state }
+    for (const listener of this.listeners) {
+      listener(this.state)
+    }
+  }
+}
 
 class FakeRuntime implements ArRuntime {
   startCount = 0
@@ -169,6 +235,85 @@ describe('mountApp', () => {
     expect(root.querySelector('.camera-status')?.textContent).toBe('Target encontrado')
   })
 
+  it('keeps the public game safe when only the marker leaves the camera', () => {
+    const root = document.createElement('div')
+    const runtime = new FakeRuntime()
+    const pong = new FakePongExperience()
+    mountApp(root, { pongExperience: pong, runtime })
+
+    runtime.emit({ status: 'target-found', targetName: 'pong-marker-v2' })
+    runtime.emitTracking({
+      anchorStatus: 'aligned',
+      targetStatus: 'visible',
+      worldStatus: 'normal',
+    })
+    runtime.emit({ status: 'target-lost', targetName: 'pong-marker-v2' })
+    runtime.emitTracking({ targetStatus: 'lost' })
+
+    expect(pong.trackingSafety.at(-1)).toBe(true)
+    expect(root.querySelector('.camera-status')?.textContent).toBe('Campo mantido pelo SLAM')
+
+    runtime.emitTracking({ anchorStatus: 'reanchoring' })
+    expect(pong.trackingSafety.at(-1)).toBe(false)
+    expect(root.querySelector('.camera-status')?.textContent).toBe(
+      'Reancorando campo · jogo pausado',
+    )
+  })
+
+  it('starts from the blue-side prompt and exposes score and transitions', () => {
+    const root = document.createElement('div')
+    const runtime = new FakeRuntime()
+    const pong = new FakePongExperience()
+    mountApp(root, { pongExperience: pong, runtime })
+    runtime.emit({ status: 'target-found', targetName: 'pong-marker-v2' })
+
+    pong.emit({ readyAvailable: true, trackingSafe: true })
+    expect(root.querySelector('.game-message')?.textContent).toBe('Vá para o lado azul')
+    expect(root.querySelector<HTMLButtonElement>('.game-action')?.textContent).toBe('Estou pronto')
+    root.querySelector<HTMLButtonElement>('.game-action')?.click()
+    expect(pong.startCount).toBe(1)
+
+    pong.emit({ aiScore: 3, countdown: 2, phase: 'countdown', playerScore: 4 })
+    expect(root.querySelector('.score-player')?.textContent).toBe('4')
+    expect(root.querySelector('.score-ai')?.textContent).toBe('3')
+    expect(root.querySelector('.game-message')?.textContent).toBe('2')
+
+    pong.emit({ countdown: null, phase: 'finished', winner: 'player' })
+    expect(root.querySelector('.game-message')?.textContent).toBe('Azul venceu!')
+    root.querySelector<HTMLButtonElement>('.game-action')?.click()
+    expect(pong.restartCount).toBe(1)
+  })
+
+  it('maps a horizontal pointer drag to a viewport-relative player movement', () => {
+    const root = document.createElement('div')
+    const runtime = new FakeRuntime()
+    const pong = new FakePongExperience()
+    mountApp(root, { pongExperience: pong, runtime })
+    runtime.emit({ status: 'target-found', targetName: 'pong-marker-v2' })
+    pong.emit({ phase: 'playing', trackingSafe: true })
+    expect(root.querySelector<HTMLElement>('.game-prompt')?.hidden).toBe(true)
+
+    Object.defineProperty(document.documentElement, 'clientWidth', {
+      configurable: true,
+      value: 400,
+    })
+    const zone = root.querySelector<HTMLElement>('.pong-touch-zone')
+    expect(zone).not.toBeNull()
+    const pointerEvent = (type: string, clientX: number) => {
+      const event = new MouseEvent(type, { bubbles: true, clientX })
+      Object.defineProperty(event, 'pointerId', { value: 7 })
+      return event
+    }
+    zone?.dispatchEvent(pointerEvent('pointerdown', 100))
+    expect(zone?.dataset['dragging']).toBe('true')
+    window.dispatchEvent(pointerEvent('pointermove', 200))
+    window.dispatchEvent(pointerEvent('pointercancel', 200))
+    window.dispatchEvent(pointerEvent('pointermove', 300))
+
+    expect(pong.moveDeltas).toEqual([0.25])
+    expect(zone?.dataset['dragging']).toBe('false')
+  })
+
   it('mounts the opt-in tracking lab without changing the normal application', () => {
     const root = document.createElement('div')
     const runtime = new FakeRuntime()
@@ -237,12 +382,14 @@ describe('mountApp', () => {
   it('disposes owned DOM and runtime exactly once', () => {
     const root = document.createElement('div')
     const runtime = new FakeRuntime()
-    const app = mountApp(root, { runtime })
+    const pong = new FakePongExperience()
+    const app = mountApp(root, { pongExperience: pong, runtime })
 
     app.dispose()
     app.dispose()
 
     expect(root.childElementCount).toBe(0)
     expect(runtime.disposeCount).toBe(1)
+    expect(pong.disposeCount).toBe(1)
   })
 })

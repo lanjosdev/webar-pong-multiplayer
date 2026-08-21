@@ -4,6 +4,11 @@ import {
   type ArRuntimeState,
   type TrackingSnapshot,
 } from './ar'
+import {
+  createLocalPongExperience,
+  type LocalPongExperience,
+  type LocalPongViewState,
+} from './game/local-pong-experience'
 import { createTrackingLabUi } from './tracking-lab-ui'
 
 export interface AppHandle {
@@ -11,6 +16,7 @@ export interface AppHandle {
 }
 
 export interface MountAppOptions {
+  pongExperience?: LocalPongExperience | null
   runtime?: ArRuntime
   trackingLabEnabled?: boolean
 }
@@ -148,11 +154,45 @@ function trackingLabCameraTitle(snapshot: TrackingSnapshot): string | null {
   return null
 }
 
+function pongCameraTitle(snapshot: TrackingSnapshot): string | null {
+  if (
+    snapshot.anchorStatus === 'frozen' ||
+    snapshot.worldStatus === 'limited' ||
+    snapshot.worldLimitedExceeded
+  ) {
+    return 'Tracking limitado · jogo pausado'
+  }
+  if (snapshot.anchorStatus === 'reanchoring') {
+    return 'Reancorando campo · jogo pausado'
+  }
+  if (snapshot.anchorStatus === 'validating') {
+    return 'Validando alinhamento · jogo pausado'
+  }
+  if (snapshot.anchorStatus === 'aligned' && snapshot.worldStatus === 'normal') {
+    return snapshot.targetStatus === 'lost' ? 'Campo mantido pelo SLAM' : 'Campo alinhado'
+  }
+  return null
+}
+
+function isPongTrackingSafe(snapshot: TrackingSnapshot): boolean {
+  return snapshot.anchorStatus === 'aligned' && snapshot.worldStatus === 'normal'
+}
+
 export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppHandle {
-  const runtime = options.runtime ?? createDefaultArRuntime()
   const trackingLabEnabled =
     options.trackingLabEnabled ??
     new URLSearchParams(window.location.search).get('trackingLab') === '1'
+  const pongExperience =
+    options.pongExperience === undefined
+      ? trackingLabEnabled
+        ? null
+        : createLocalPongExperience()
+      : options.pongExperience
+  const runtime =
+    options.runtime ??
+    createDefaultArRuntime({
+      ...(pongExperience ? { anchoredContent: pongExperience } : {}),
+    })
   const shell = document.createElement('main')
   shell.className = 'app-shell'
 
@@ -196,9 +236,55 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
   stopAction.type = 'button'
   stopAction.textContent = 'Encerrar'
 
+  const gameHud = document.createElement('section')
+  gameHud.className = 'game-hud'
+  gameHud.hidden = true
+  gameHud.setAttribute('aria-label', 'Placar e controles do Pong')
+
+  const scoreboard = document.createElement('div')
+  scoreboard.className = 'scoreboard'
+
+  const playerScore = document.createElement('span')
+  playerScore.className = 'score score-player'
+  playerScore.setAttribute('aria-label', 'Pontos do jogador azul')
+  playerScore.textContent = '0'
+
+  const scoreSeparator = document.createElement('span')
+  scoreSeparator.className = 'score-separator'
+  scoreSeparator.textContent = '×'
+
+  const aiScore = document.createElement('span')
+  aiScore.className = 'score score-ai'
+  aiScore.setAttribute('aria-label', 'Pontos da inteligência artificial vermelha')
+  aiScore.textContent = '0'
+
+  const gamePrompt = document.createElement('div')
+  gamePrompt.className = 'game-prompt'
+  gamePrompt.setAttribute('role', 'status')
+  gamePrompt.setAttribute('aria-live', 'polite')
+
+  const gameMessage = document.createElement('p')
+  gameMessage.className = 'game-message'
+
+  const gameAction = document.createElement('button')
+  gameAction.className = 'game-action'
+  gameAction.type = 'button'
+
+  const touchZone = document.createElement('div')
+  touchZone.className = 'pong-touch-zone'
+  touchZone.setAttribute('aria-label', 'Arraste para mover a raquete azul')
+
+  const touchHint = document.createElement('span')
+  touchHint.className = 'touch-hint'
+  touchHint.textContent = 'Arraste para mover a raquete azul'
+
   panel.append(eyebrow, title, status, primaryAction)
   cameraHud.append(cameraStatus, stopAction)
-  overlay.append(panel, cameraHud)
+  scoreboard.append(playerScore, scoreSeparator, aiScore)
+  gamePrompt.append(gameMessage, gameAction)
+  touchZone.append(touchHint)
+  gameHud.append(scoreboard, gamePrompt, touchZone)
+  overlay.append(panel, cameraHud, gameHud)
   shell.append(canvas, overlay)
   const trackingLabUi = trackingLabEnabled ? createTrackingLabUi(runtime, window) : null
   if (trackingLabUi) {
@@ -209,13 +295,80 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
   let disposed = false
   let currentState: ArRuntimeState = { status: 'booting' }
   let latestTrackingSnapshot: TrackingSnapshot | null = null
+  let activePointerId: number | null = null
+  let lastPointerX = 0
+
+  const resetPointer = () => {
+    activePointerId = null
+    touchZone.dataset['dragging'] = 'false'
+  }
+
+  const sessionAllowsTracking = () =>
+    ['camera-active', 'searching-target', 'target-found', 'target-lost'].includes(
+      currentState.status,
+    )
+
+  const updatePongTrackingSafety = () => {
+    pongExperience?.setTrackingSafe(
+      sessionAllowsTracking() &&
+        latestTrackingSnapshot !== null &&
+        isPongTrackingSafe(latestTrackingSnapshot),
+    )
+  }
 
   const updateCameraStatus = () => {
     const fallback = contentForState(currentState).title
     cameraStatus.textContent =
-      (trackingLabEnabled && latestTrackingSnapshot
-        ? trackingLabCameraTitle(latestTrackingSnapshot)
+      (latestTrackingSnapshot
+        ? trackingLabEnabled
+          ? trackingLabCameraTitle(latestTrackingSnapshot)
+          : pongCameraTitle(latestTrackingSnapshot)
         : null) ?? fallback
+  }
+
+  const renderPong = (state: LocalPongViewState) => {
+    playerScore.textContent = String(state.playerScore)
+    aiScore.textContent = String(state.aiScore)
+    gamePrompt.hidden = false
+    gameAction.hidden = true
+    gameAction.disabled = false
+    gameAction.dataset['action'] = ''
+
+    if (state.trackingPaused) {
+      gameMessage.textContent =
+        state.countdown === null
+          ? 'Jogo pausado · estabilizando tracking'
+          : `Retomando em ${String(state.countdown)}`
+    } else if (state.phase === 'ready') {
+      gameMessage.textContent = state.readyAvailable
+        ? 'Vá para o lado azul'
+        : 'Aguardando campo estável'
+      gameAction.hidden = false
+      gameAction.disabled = !state.readyAvailable
+      gameAction.dataset['action'] = 'start'
+      gameAction.textContent = 'Estou pronto'
+    } else if (state.phase === 'countdown') {
+      gameMessage.textContent = String(state.countdown ?? 1)
+    } else if (state.phase === 'point') {
+      gameMessage.textContent = state.pointWinner === 'player' ? 'Ponto azul' : 'Ponto vermelho'
+    } else if (state.phase === 'finished') {
+      gameMessage.textContent = state.winner === 'player' ? 'Azul venceu!' : 'Vermelho venceu'
+      gameAction.hidden = false
+      gameAction.disabled = !state.readyAvailable
+      gameAction.dataset['action'] = 'restart'
+      gameAction.textContent = 'Jogar novamente'
+    } else {
+      gameMessage.textContent = ''
+      gamePrompt.hidden = true
+    }
+
+    const inputEnabled = state.phase === 'playing' && state.trackingSafe && !state.trackingPaused
+    touchZone.dataset['enabled'] = String(inputEnabled)
+    touchZone.setAttribute('aria-disabled', String(!inputEnabled))
+    touchHint.hidden = !inputEnabled
+    if (!inputEnabled) {
+      resetPointer()
+    }
   }
 
   const render = (nextState: ArRuntimeState) => {
@@ -237,6 +390,11 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
     updateCameraStatus()
     stopAction.hidden = !sessionRunning
     trackingLabUi?.setSessionState(cameraVisible, trialEnabled)
+    gameHud.hidden = !pongExperience || !trialEnabled
+    if (!trialEnabled) {
+      resetPointer()
+    }
+    updatePongTrackingSafety()
 
     eyebrow.textContent = content.eyebrow
     title.textContent = content.title
@@ -247,12 +405,15 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
   }
 
   const unsubscribe = runtime.subscribe(render)
-  const unsubscribeTracking = trackingLabEnabled
-    ? runtime.subscribeTracking((snapshot) => {
-        latestTrackingSnapshot = snapshot
-        updateCameraStatus()
-      })
-    : () => undefined
+  const unsubscribeTracking =
+    trackingLabEnabled || pongExperience
+      ? runtime.subscribeTracking((snapshot) => {
+          latestTrackingSnapshot = snapshot
+          updateCameraStatus()
+          updatePongTrackingSafety()
+        })
+      : () => undefined
+  const unsubscribePong = pongExperience?.subscribe(renderPong) ?? (() => undefined)
 
   const handlePrimaryAction = () => {
     const action = primaryAction.dataset['action']
@@ -262,8 +423,49 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
 
   const handleStop = () => runtime.stop()
 
+  const handleGameAction = () => {
+    if (gameAction.dataset['action'] === 'start') {
+      pongExperience?.start()
+    } else if (gameAction.dataset['action'] === 'restart') {
+      pongExperience?.restart()
+    }
+  }
+
+  const handlePointerDown = (event: PointerEvent) => {
+    if (!pongExperience || activePointerId !== null || touchZone.dataset['enabled'] !== 'true') {
+      return
+    }
+    activePointerId = event.pointerId
+    lastPointerX = event.clientX
+    touchZone.dataset['dragging'] = 'true'
+    event.preventDefault()
+  }
+
+  const handlePointerMove = (event: PointerEvent) => {
+    if (!pongExperience || event.pointerId !== activePointerId) {
+      return
+    }
+    const deltaX = event.clientX - lastPointerX
+    lastPointerX = event.clientX
+    const viewportWidth = Math.max(1, document.documentElement.clientWidth)
+    pongExperience.movePlayerBy(deltaX / viewportWidth)
+    event.preventDefault()
+  }
+
+  const releasePointer = (event: PointerEvent) => {
+    if (event.pointerId !== activePointerId) {
+      return
+    }
+    resetPointer()
+  }
+
   primaryAction.addEventListener('click', handlePrimaryAction)
   stopAction.addEventListener('click', handleStop)
+  gameAction.addEventListener('click', handleGameAction)
+  touchZone.addEventListener('pointerdown', handlePointerDown)
+  window.addEventListener('pointermove', handlePointerMove)
+  window.addEventListener('pointerup', releasePointer)
+  window.addEventListener('pointercancel', releasePointer)
   void runtime.preload().catch(() => undefined)
 
   return {
@@ -274,10 +476,17 @@ export function mountApp(root: HTMLElement, options: MountAppOptions = {}): AppH
 
       primaryAction.removeEventListener('click', handlePrimaryAction)
       stopAction.removeEventListener('click', handleStop)
+      gameAction.removeEventListener('click', handleGameAction)
+      touchZone.removeEventListener('pointerdown', handlePointerDown)
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', releasePointer)
+      window.removeEventListener('pointercancel', releasePointer)
       unsubscribe()
       unsubscribeTracking()
+      unsubscribePong()
       trackingLabUi?.dispose()
       runtime.dispose()
+      pongExperience?.dispose()
       shell.remove()
       disposed = true
     },

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Material, type Object3D, Scene } from 'three'
+import { Group, Material, type Object3D, Scene } from 'three'
 
+import type { AnchoredContent } from './anchored-content'
 import type {
   CameraPipelineModule,
   CameraStatus,
@@ -185,11 +186,36 @@ function materialOpacities(object: Object3D | undefined): number[] {
   return opacities
 }
 
-function setup() {
+class RecordingAnchoredContent implements AnchoredContent {
+  readonly object3d = new Group()
+  dimensions: Array<{ length: number; width: number }> = []
+  disposeCount = 0
+  opacities: number[] = []
+  updates: number[] = []
+
+  dispose(): void {
+    this.disposeCount += 1
+  }
+
+  setDimensions(width: number, length: number): void {
+    this.dimensions.push({ length, width })
+  }
+
+  setOpacity(opacity: number): void {
+    this.opacities.push(opacity)
+  }
+
+  update(deltaSeconds: number): void {
+    this.updates.push(deltaSeconds)
+  }
+}
+
+function setup(anchoredContent?: AnchoredContent) {
   const engine = new FakeEngine()
   const loader = new FakeLoader(engine)
   const imageTargetLoader = new FakeImageTargetLoader()
   const runtime = createArRuntime({
+    ...(anchoredContent ? { anchoredContent } : {}),
     document,
     imageTargetLoader,
     isEnvironmentSupported: () => null,
@@ -231,7 +257,7 @@ describe('createArRuntime', () => {
     runtime.dispose()
   })
 
-  it('configures image tracking mode before creating and running the pipeline', async () => {
+  it('configures public world-relative tracking before creating and running the pipeline', async () => {
     const { engine, runtime, states } = setup()
     const canvas = document.createElement('canvas')
     await runtime.preload()
@@ -241,7 +267,7 @@ describe('createArRuntime', () => {
     await started
 
     expect(engine.calls).toEqual([
-      'xr.configure:true:pong-marker-v2',
+      'xr.configure:false:pong-marker-v2:responsive',
       'three.configure:false',
       'gl.pipeline',
       'xr.pipeline',
@@ -359,7 +385,7 @@ describe('createArRuntime', () => {
     runtime.dispose()
   })
 
-  it('maps image target scanning, found, lost and reacquired states', async () => {
+  it('maps image target states while preserving the public world-relative anchor', async () => {
     vi.useFakeTimers()
     const { engine, runtime, states } = setup()
     await runtime.preload()
@@ -386,7 +412,7 @@ describe('createArRuntime', () => {
       scaledHeight: 1,
       scaledWidth: 0.75,
     })
-    expect(engine.scene.children[0]?.position.toArray()).toEqual([2, 3, 4])
+    expect(engine.scene.children[0]?.position.toArray()).toEqual([1, 2, 3])
     engine.emitPipelineEvent('reality.imagelost', { name: 'pong-marker-v2' })
     expect(engine.scene.children[0]?.visible).toBe(true)
     vi.advanceTimersByTime(299)
@@ -403,7 +429,7 @@ describe('createArRuntime', () => {
     expect(engine.scene.children[0]?.visible).toBe(true)
     engine.emitPipelineEvent('reality.imagelost', { name: 'pong-marker-v2' })
     vi.advanceTimersByTime(300)
-    expect(engine.scene.children[0]?.visible).toBe(false)
+    expect(engine.scene.children[0]?.visible).toBe(true)
     engine.emitPipelineEvent('reality.imagefound', {
       name: 'pong-marker-v2',
       position: { x: 1, y: 2, z: 3 },
@@ -420,6 +446,43 @@ describe('createArRuntime', () => {
     expect(states.filter(({ status }) => status === 'target-found')).toHaveLength(2)
     expect(states.at(-1)).toEqual({ status: 'target-found', targetName: 'pong-marker-v2' })
     runtime.dispose()
+  })
+
+  it('mounts public anchored content without laboratory diagnostics and leaves its disposal to the owner', async () => {
+    vi.useFakeTimers()
+    const content = new RecordingAnchoredContent()
+    const { engine, runtime } = setup(content)
+    await runtime.preload()
+    const started = runtime.start(document.createElement('canvas'))
+    engine.emitCameraStatus('hasVideo')
+    await started
+
+    const root = engine.scene.getObjectByName('tracked-experience-root')
+    expect(root?.getObjectByName('tracking-lab-calibration-field')).toBeUndefined()
+    expect(root?.children).toContain(content.object3d)
+
+    engine.emitPipelineEvent('reality.trackingstatus', { reason: 'UNDEFINED', status: 'NORMAL' })
+    engine.emitPipelineEvent('reality.imagefound', {
+      name: 'pong-marker-v2',
+      position: { x: 1, y: 2, z: 3 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      scale: 2,
+      scaledHeight: 1,
+      scaledWidth: 0.75,
+    })
+    vi.advanceTimersByTime(16)
+    engine.emitUpdate()
+
+    expect(content.dimensions.at(-1)).toEqual({
+      length: 1 / 0.26,
+      width: 0.5 / 0.26,
+    })
+    expect(content.updates).not.toHaveLength(0)
+    expect(content.opacities.at(-1)).toBe(1)
+
+    runtime.dispose()
+    expect(content.object3d.parent).toBeNull()
+    expect(content.disposeCount).toBe(0)
   })
 
   it('keeps the calibration field visible after image loss while world tracking is normal', async () => {
@@ -456,7 +519,8 @@ describe('createArRuntime', () => {
 
   it('validates divergent image updates and reanchors the relative field automatically', async () => {
     vi.useFakeTimers()
-    const { engine, runtime } = setup()
+    const content = new RecordingAnchoredContent()
+    const { engine, runtime } = setup(content)
     const snapshots: TrackingSnapshot[] = []
     const events: TrackingTimelineEvent[] = []
     runtime.configureTrackingLab(worldRelativeLabConfig)
@@ -494,6 +558,7 @@ describe('createArRuntime', () => {
     vi.advanceTimersByTime(75)
     engine.emitUpdate()
     expect(Math.max(...materialOpacities(field))).toBeCloseTo(0.5, 5)
+    expect(content.opacities.at(-1)).toBeCloseTo(0.5, 5)
     expect(root?.position.x).toBe(1)
     vi.advanceTimersByTime(75)
     engine.emitUpdate()
@@ -502,6 +567,7 @@ describe('createArRuntime', () => {
     vi.advanceTimersByTime(250)
     engine.emitUpdate()
     expect(Math.max(...materialOpacities(field))).toBe(1)
+    expect(content.opacities.at(-1)).toBe(1)
     expect(snapshots.at(-1)).toMatchObject({
       anchorStatus: 'aligned',
       automaticReanchorCount: 1,

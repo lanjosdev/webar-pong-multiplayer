@@ -19,10 +19,12 @@ Execute a partir da raiz do repositório:
 - formatação: `npm --prefix client run format:check`;
 - validação completa: `npm --prefix client run check`.
 
-O teste inicial valida montagem, conteúdo acessível e teardown idempotente do
-shell. Os testes do bootstrap também validam loader, timeout, ordem da pipeline,
-permissão, erros, retry, pause/resume e teardown com um engine falso. O build
-compara inventário e conteúdo dos artefatos copiados com o pacote instalado.
+Os testes automatizados cobrem shell, loader, ordem da pipeline, lifecycle,
+conteúdo ancorado e teardown. O game core cobre avanço determinístico, paredes,
+colisões, aceleração, pontos, saques, contagem, primeiro a 5 e reinício. IA,
+arrasto relativo, clamp, bloqueios de input, placar e pausa/retomada após
+tracking inseguro possuem testes próprios. O build compara inventário e
+conteúdo dos artefatos copiados com o pacote instalado.
 
 ## Validação móvel do bootstrap
 
@@ -64,10 +66,10 @@ variação superior a 1 mm e use o fallback. Monte o papel sobre base rígida,
 plana e fosca. Em cada aparelho:
 
 1. enquadre o marcador inteiro até a HUD indicar `Target encontrado`;
-2. mova o aparelho em portrait e landscape e observe posição, rotação e escala
-   do plano ciano e do cubo amarelo;
-3. oculte parcialmente e depois totalmente o target, verificando a mensagem de
-   reenquadramento e que o objeto é ocultado;
+2. com `?trackingLab=1`, mova o aparelho em portrait e landscape e observe
+   posição, rotação e escala do plano ciano e do cubo amarelo;
+3. em `image-only`, oculte parcialmente e depois totalmente o target,
+   verificando a mensagem de reenquadramento e que o objeto é ocultado;
 4. reenquadre e confirme a reaquisição sem recarregar a página;
 5. alterne background e foreground e confirme nova aquisição;
 6. teste luz difusa, ângulos oblíquos e as distâncias formais do laboratório.
@@ -157,6 +159,27 @@ FPS e comportamento térmico devem ser registrados, mas não possuem budget de
 produto aprovado. Se o campo não passar, mantenha o gate aberto e avalie, em
 ordem, posição do target, textura não repetitiva, múltiplos targets e somente
 depois ChArUco/AprilTag.
+
+## Smoke test do protótipo local
+
+Use o fluxo público, target de 195 x 260 mm, campo de 1,0 x 0,5 m e Redmi Note
+13. Execute uma vez em portrait e outra em landscape:
+
+1. inicie a câmera, adquira o target e aguarde `Campo alinhado`;
+2. caminhe até a extremidade azul e toque em **Estou pronto**;
+3. confirme a contagem 3–2–1, arraste a raquete e complete uma partida até 5;
+4. durante a partida, retire apenas o target da câmera mantendo o SLAM normal e
+   confirme que a física e o controle continuam ativos;
+5. provoque validação, reancoragem ou SLAM limitado e confirme que bola,
+   raquetes e relógios congelam imediatamente;
+6. recupere o tracking e confirme 750 ms estáveis mais 3–2–1 antes da retomada;
+7. finalize a partida, toque em **Jogar novamente** e confirme placar zerado e
+   nova contagem.
+
+A aceitação da apresentação exige uma partida completa sem avanço da física em
+tracking inseguro. Registrar vídeo nos passos 3 a 7 e JSON do laboratório apenas
+se for necessário diagnosticar tracking. Esse smoke test não aprova os gates
+formais de tracking, desempenho ou ergonomia.
 
 ### Resultado qualitativo do v1
 

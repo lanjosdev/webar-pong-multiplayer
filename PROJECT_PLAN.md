@@ -14,10 +14,12 @@ arquitetura e validação permanecem nos documentos especializados em `docs/`.
 
 ## Estado atual
 
-- Fase ativa: **Fase 0 — Fundação e decisões iniciais**.
-- Próximo gate: executar o laboratório A4 nos modos `image-only`,
-  `world-relative` e `world-absolute`, validando o campo definido de
-  1,0 x 0,5 m no Android intermediário e iPhone 14.
+- Trilha ativa: **Fase 2 — protótipo local para apresentação**, pela exceção
+  registrada no ADR-0003.
+- Gates formais: **Fase 1 aberta** e **Fase 2 aberta**; a implementação jogável
+  não substitui as validações físicas pendentes.
+- Próximo marco: smoke test da partida completa no Redmi Note 13 em portrait e
+  landscape, incluindo perda do target, pausa/retomada e reinício.
 - Implementação multiplayer: **adiada até a aprovação das fases 1 e 2**.
 
 O engine binário já é copiado e verificado no build. O bootstrap de câmera e
@@ -48,6 +50,12 @@ amostras consistentes, reancora automaticamente diferenças grandes e exporta
 timeline schema v2. O refino está automatizado, mas sua aprovação continua
 dependente de dez recuperações rápidas e três ensaios normais de 2 min no
 aparelho real.
+
+Para preparar a apresentação, o ADR-0003 abriu uma trilha excepcional da Fase 2.
+O fluxo público adota provisoriamente o target de 195 x 260 mm, campo de
+1,0 x 0,5 m e `world-relative`. O Pong local está implementado com controle por
+arrasto, IA e proteção de tracking. Essa escolha é reversível e não encerra os
+gates de tracking, desempenho ou ergonomia.
 
 ### Restrição externa confirmada
 
@@ -122,7 +130,8 @@ gameplay e rede.
 - [x] Gerar PDFs A4 de 195 x 260 mm e fallback de 180 x 240 mm para comparação
   com o baseline de 150 x 200 mm.
 - [x] Registrar ADR-0002 e implementar os protótipos `world-relative` e
-  `world-absolute` sem alterar o fluxo público.
+  `world-absolute`; o ADR-0003 promoveu depois o relativo ao fluxo público
+  provisório.
 - [x] Refinar `world-relative` com validação de `imagefound`/`imageupdated`,
   reancoragem automática, estados independentes da âncora e telemetria v2.
 - [ ] Validar o refino relativo em dez recuperações rápidas e três ensaios
@@ -140,14 +149,14 @@ gameplay e rede.
 
 ## Fase 2 — Pong 3D local
 
-- [ ] Definir modelo determinístico do estado do jogo.
-- [ ] Implementar campo, raquetes, bola e limites.
-- [ ] Implementar game loop desacoplado do tracking e da renderização.
-- [ ] Implementar colisões e pontuação sem physics engine.
-- [ ] Implementar controles touch.
-- [ ] Implementar estados de início, partida, ponto, fim e reinício.
-- [ ] Integrar o estado lógico à cena ancorada.
-- [ ] Criar testes unitários para regras e colisões.
+- [x] Definir modelo determinístico do estado do jogo.
+- [x] Implementar campo, raquetes, bola e limites.
+- [x] Implementar game loop desacoplado do tracking e da renderização.
+- [x] Implementar colisões e pontuação sem physics engine.
+- [x] Implementar controles touch.
+- [x] Implementar estados de início, partida, ponto, fim e reinício.
+- [x] Integrar o estado lógico à cena ancorada.
+- [x] Criar testes unitários para regras e colisões.
 - [ ] Validar escala, legibilidade e ergonomia em aparelho.
 - [ ] Medir FPS, estabilidade e comportamento térmico em sessão prolongada.
 
@@ -191,13 +200,13 @@ gameplay e rede.
 
 1. Evidência mobile do bootstrap WebAR e da retomada de lifecycle.
 2. Condições de impressão, iluminação e durabilidade do Image Target em uso.
-3. Layout e gesto dos controles touch.
+3. Refinamento ergonômico do controle por arrasto relativo.
 4. Aparelhos, versões mínimas de OS e browsers suportados.
 5. Critérios numéricos para tracking, FPS, carregamento e sessão térmica.
 6. Resultado da validação do campo de 1,0 x 0,5 m nas escalas relativa e
    absoluta.
-7. Adoção real de World Tracking/SLAM no fluxo público após as medições do
-   laboratório.
+7. Aprovação definitiva ou reversão do World Tracking/SLAM adotado
+   provisoriamente pelo ADR-0003.
 8. Socket.IO ou WebSocket puro na fase 3.
 9. Fluxo de sala, identidade, reconnect e eventual autenticação.
 10. Hospedagem do frontend e do servidor.

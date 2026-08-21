@@ -1,7 +1,10 @@
 import { createXrEngineLoader } from './engine-loader'
 import { createImageTargetDataLoader } from './image-target-data'
 import { createArRuntime } from './runtime'
+import type { AnchoredContent } from './anchored-content'
 import type { ArRuntime } from './types'
+
+export type { AnchoredContent } from './anchored-content'
 
 export type {
   ArRuntime,
@@ -25,7 +28,9 @@ export type {
   WorldTrackingStatus,
 } from './types'
 
-export function createDefaultArRuntime(): ArRuntime {
+export function createDefaultArRuntime(
+  options: { anchoredContent?: AnchoredContent } = {},
+): ArRuntime {
   const loader = createXrEngineLoader({
     baseUrl: import.meta.env.BASE_URL,
     document,
@@ -36,5 +41,11 @@ export function createDefaultArRuntime(): ArRuntime {
     fetch: window.fetch.bind(window),
   })
 
-  return createArRuntime({ document, imageTargetLoader, loader, window })
+  return createArRuntime({
+    ...(options.anchoredContent ? { anchoredContent: options.anchoredContent } : {}),
+    document,
+    imageTargetLoader,
+    loader,
+    window,
+  })
 }

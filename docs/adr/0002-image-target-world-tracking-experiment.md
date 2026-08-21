@@ -100,3 +100,7 @@ O usuário confirmou 1,0 x 0,5 m como tamanho suficiente para a experiência e
 retirou 1,5 x 0,75 e 2,0 x 1,0 m da matriz ativa. A decisão experimental sobre
 os modos de tracking permanece válida; apenas a comparação entre tamanhos de
 campo foi encerrada.
+
+O ADR-0003 posteriormente adotou `world-relative` no fluxo público como exceção
+provisória para o protótipo de apresentação. Essa decisão não substitui os
+critérios experimentais deste ADR nem aprova o gate formal da Fase 1.

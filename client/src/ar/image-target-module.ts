@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 
+import type { AnchoredContent } from './anchored-content'
 import { createCalibrationField, type CalibrationField } from './calibration-field'
 import type { CameraPipelineEvent, CameraPipelineModule, XrEngine } from './engine-contract'
 import type {
@@ -51,6 +52,7 @@ interface ReanchorTransition {
 }
 
 export interface ImageTargetControllerOptions {
+  anchoredContent?: AnchoredContent
   config: TrackingLabConfig
   engine: XrEngine
   now?: () => number
@@ -206,8 +208,8 @@ export function createImageTargetController(
   options: ImageTargetControllerOptions,
 ): ImageTargetController {
   const now = options.now ?? (() => performance.now())
-  const isWorldMode = options.config.enabled && options.config.mode !== 'image-only'
-  const isRefinedRelativeMode = options.config.enabled && options.config.mode === 'world-relative'
+  const isWorldMode = options.config.mode !== 'image-only'
+  const isRefinedRelativeMode = options.config.mode === 'world-relative'
   let scene: THREE.Scene | null = null
   let root: THREE.Group | null = null
   let targetSurface: THREE.Mesh | null = null
@@ -322,6 +324,7 @@ export function createImageTargetController(
     if (root && scene) {
       scene.remove(root)
     }
+    options.anchoredContent?.object3d.removeFromParent()
     field?.dispose()
     field = null
     for (const resource of resources) {
@@ -343,45 +346,47 @@ export function createImageTargetController(
       throw new Error('A cena Three.js do XR Engine não está disponível.')
     }
 
-    const planeGeometry = new THREE.PlaneGeometry(1, 1)
-    const planeMaterial = new THREE.MeshBasicMaterial({
-      color: 0x52e5ff,
-      depthWrite: false,
-      opacity: options.config.enabled ? 0.1 : 0.18,
-      side: THREE.DoubleSide,
-      transparent: true,
-    })
-    const outlineGeometry = new THREE.EdgesGeometry(planeGeometry)
-    const outlineMaterial = new THREE.LineBasicMaterial({ color: 0x52e5ff })
-    const markerGeometry = new THREE.BoxGeometry(1, 1, 1)
-    const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xffbf47 })
-
     const nextRoot = new THREE.Group()
     nextRoot.name = 'tracked-experience-root'
-    const nextSurface = new THREE.Mesh(planeGeometry, planeMaterial)
-    const nextOutline = new THREE.LineSegments(outlineGeometry, outlineMaterial)
-    const nextOriginMarker = new THREE.Mesh(markerGeometry, markerMaterial)
     nextRoot.visible = false
-    nextRoot.add(nextSurface, nextOutline, nextOriginMarker)
     if (options.config.enabled) {
+      const planeGeometry = new THREE.PlaneGeometry(1, 1)
+      const planeMaterial = new THREE.MeshBasicMaterial({
+        color: 0x52e5ff,
+        depthWrite: false,
+        opacity: 0.1,
+        side: THREE.DoubleSide,
+        transparent: true,
+      })
+      const outlineGeometry = new THREE.EdgesGeometry(planeGeometry)
+      const outlineMaterial = new THREE.LineBasicMaterial({ color: 0x52e5ff })
+      const markerGeometry = new THREE.BoxGeometry(1, 1, 1)
+      const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xffbf47 })
+      const nextSurface = new THREE.Mesh(planeGeometry, planeMaterial)
+      const nextOutline = new THREE.LineSegments(outlineGeometry, outlineMaterial)
+      const nextOriginMarker = new THREE.Mesh(markerGeometry, markerMaterial)
+      nextRoot.add(nextSurface, nextOutline, nextOriginMarker)
+      resources = [
+        planeGeometry,
+        planeMaterial,
+        outlineGeometry,
+        outlineMaterial,
+        markerGeometry,
+        markerMaterial,
+      ]
+      targetSurface = nextSurface
+      targetOutline = nextOutline
+      originMarker = nextOriginMarker
       field = createCalibrationField()
       nextRoot.add(field.group)
     }
+    if (options.anchoredContent) {
+      nextRoot.add(options.anchoredContent.object3d)
+    }
     nextScene.add(nextRoot)
 
-    resources = [
-      planeGeometry,
-      planeMaterial,
-      outlineGeometry,
-      outlineMaterial,
-      markerGeometry,
-      markerMaterial,
-    ]
     scene = nextScene
     root = nextRoot
-    targetSurface = nextSurface
-    targetOutline = nextOutline
-    originMarker = nextOriginMarker
   }
 
   const desiredTransform = (pose: TrackingTargetPose) => ({
@@ -413,7 +418,7 @@ export function createImageTargetController(
     applyRootTransform(pose)
     correction = null
     reanchorTransition = null
-    field?.setOpacity(1)
+    setContentOpacity(1)
     recalibrationRequired = false
     anchorTranslationErrorMeters = 0
     anchorAngularErrorDegrees = 0
@@ -446,17 +451,20 @@ export function createImageTargetController(
   }
 
   const updateGeometry = (pose: TrackingTargetPose) => {
-    if (!targetSurface || !targetOutline || !originMarker) {
-      return
-    }
     const target = targetDimensions(options.config, pose)
     const referenceSize = Math.min(target.width, target.height)
-    targetSurface.scale.set(target.width, target.height, 1)
-    targetOutline.scale.set(target.width, target.height, 1)
-    originMarker.position.set(0, 0, referenceSize * 0.075)
-    originMarker.scale.setScalar(referenceSize * 0.15)
+    targetSurface?.scale.set(target.width, target.height, 1)
+    targetOutline?.scale.set(target.width, target.height, 1)
+    originMarker?.position.set(0, 0, referenceSize * 0.075)
+    originMarker?.scale.setScalar(referenceSize * 0.15)
     const dimensions = fieldDimensions(options.config, pose)
     field?.setDimensions(dimensions.width, dimensions.length)
+    options.anchoredContent?.setDimensions(dimensions.width, dimensions.length)
+  }
+
+  const setContentOpacity = (opacity: number) => {
+    field?.setOpacity(opacity)
+    options.anchoredContent?.setOpacity(opacity)
   }
 
   const requestAnchorCorrection = (pose: TrackingTargetPose) => {
@@ -495,7 +503,7 @@ export function createImageTargetController(
   const cancelReanchorTransition = () => {
     if (!root || !reanchorTransition) {
       reanchorTransition = null
-      field?.setOpacity(1)
+      setContentOpacity(1)
       return
     }
     if (reanchorTransition.applied) {
@@ -504,7 +512,7 @@ export function createImageTargetController(
       root.scale.setScalar(reanchorTransition.originalScale)
     }
     reanchorTransition = null
-    field?.setOpacity(1)
+    setContentOpacity(1)
   }
 
   const startLargeReanchor = (pose: TrackingTargetPose) => {
@@ -735,6 +743,7 @@ export function createImageTargetController(
 
   const updateFrame = () => {
     const frameAtMs = now()
+    const deltaSeconds = lastFrameAtMs === null ? 0 : Math.max(0, frameAtMs - lastFrameAtMs) / 1000
     if (lastFrameAtMs !== null) {
       const elapsed = frameAtMs - lastFrameAtMs
       if (elapsed > 0) {
@@ -768,7 +777,7 @@ export function createImageTargetController(
       const phaseDuration =
         transition.phase === 'fading-out' ? LARGE_REANCHOR_FADE_OUT_MS : LARGE_REANCHOR_FADE_IN_MS
       const progress = Math.min(1, (frameAtMs - transition.startedAtMs) / phaseDuration)
-      field?.setOpacity(transition.phase === 'fading-out' ? 1 - progress : progress)
+      setContentOpacity(transition.phase === 'fading-out' ? 1 - progress : progress)
       if (progress === 1 && transition.phase === 'fading-out') {
         applyRootTransform(transition.endPose)
         transition.applied = true
@@ -779,12 +788,13 @@ export function createImageTargetController(
         emitSnapshot()
       } else if (progress === 1) {
         reanchorTransition = null
-        field?.setOpacity(1)
+        setContentOpacity(1)
         automaticReanchorCount += 1
         setAnchorStatus('aligned')
         emitSnapshot()
       }
     }
+    options.anchoredContent?.update(deltaSeconds)
     if (lastFrameSnapshotAtMs === null || frameAtMs - lastFrameSnapshotAtMs >= 100) {
       lastFrameSnapshotAtMs = frameAtMs
       emitSnapshot()

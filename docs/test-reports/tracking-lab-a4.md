@@ -3,6 +3,25 @@
 Status: aguardando execução física nos dois aparelhos. Este arquivo prepara o
 registro consolidado; nenhum critério está marcado como aprovado sem evidência.
 
+## Evidência parcial — ensaios 1 e 1B
+
+Em 2026-08-21, o usuário executou `world-relative` no Redmi Note 13, Android 15,
+Chrome 145, em portrait, com gravação 720p/30 FPS. No ensaio 1 informou que não
+foi necessário tocar em `Buscar nova calibração` e que não apareceu `Tracking
+limitado`. Iluminação e resultado percebido não foram preenchidos.
+
+No ensaio 1B, o aparelho permaneceu parado nos 10 segundos iniciais e o usuário
+não percebeu `Tracking limitado`. As quantidades de perdas e reancoragens não
+foram contadas, e o campo “Terminou com Target e campo alinhados?” permaneceu
+ambíguo como “sim/não”. As evidências externas foram fornecidas como
+`ensaio-01-world-relative.json/.mp4` e
+`ensaio-01b-world-relative.json/.mp4`; não foram incorporadas ao repositório.
+
+Esses dados sustentam somente a escolha provisória do ADR-0003. Eles não
+completam dez recuperações, três ensaios normais de 2 min, matriz em iPhone,
+medição de FPS/térmica ou critérios de jitter e drift; por isso o gate continua
+aberto.
+
 ## Observação que motivou o refino relativo
 
 Em 2026-08-20, um teste Android mostrou que movimentos rápidos podiam deslocar
@@ -18,7 +37,7 @@ lógico foi implementado, mas ainda aguarda o protocolo físico abaixo.
 - Build/commit:
 - Responsável:
 - iPhone/OS/browser:
-- Android/OS/browser:
+- Android/OS/browser: Redmi Note 13 / Android 15 / Chrome 145 (parcial)
 - Iluminação e montagem:
 - Vídeos/capturas:
 - JSONs exportados:
@@ -44,8 +63,8 @@ falha descrito em `docs/testing.md` for observado.
 ## Decisão do gate
 
 - Campo definido: 1,0 x 0,5 m; aprovação nos dois aparelhos: TBD.
-- Target escolhido: TBD.
-- Modo de escala escolhido: TBD.
-- SLAM aprovado para o fluxo público: TBD.
+- Target escolhido provisoriamente para demonstração: 195 x 260 mm.
+- Modo provisório do protótipo: `world-relative`.
+- SLAM aprovado definitivamente para o fluxo público: não; exceção do ADR-0003.
 - FPS e budget térmico propostos após evidência: TBD.
 - Pendências e próximo experimento: TBD.

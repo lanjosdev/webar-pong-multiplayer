@@ -23,10 +23,12 @@ import type {
   TrackingTimelineEvent,
   TrackingTimelineEventListener,
 } from './types'
+import type { AnchoredContent } from './anchored-content'
 
 const LIFECYCLE_MODULE_NAME = 'webar-runtime-lifecycle'
 
 export interface ArRuntimeOptions {
+  anchoredContent?: AnchoredContent
   document: Document
   imageTargetLoader: ImageTargetDataLoader
   isEnvironmentSupported?: () => string | null
@@ -75,9 +77,9 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
     cameraDistanceMeters: 1.25,
     enabled: false,
     fieldLengthMeters: 1,
-    mode: 'image-only',
-    targetHeightMeters: 0.2,
-    targetWidthMeters: 0.15,
+    mode: 'world-relative',
+    targetHeightMeters: 0.26,
+    targetWidthMeters: 0.195,
     trialScenario: 'acquisition',
   }
   let trackingSnapshot: TrackingSnapshot = {
@@ -460,17 +462,15 @@ export function createArRuntime(options: ArRuntimeOptions): ArRuntime {
 
       try {
         const xrOptions: Parameters<XrEngine['XrController']['configure']>[0] = {
-          disableWorldTracking: true,
+          disableWorldTracking: trackingLabConfig.mode === 'image-only',
           imageTargetData: [imageTargetData],
-        }
-        if (trackingLabConfig.enabled) {
-          xrOptions.disableWorldTracking = trackingLabConfig.mode === 'image-only'
-          xrOptions.scale = trackingLabConfig.mode === 'world-absolute' ? 'absolute' : 'responsive'
+          scale: trackingLabConfig.mode === 'world-absolute' ? 'absolute' : 'responsive',
         }
         engine.XrController.configure(xrOptions)
         engine.Threejs.configure({ renderCameraTexture: false })
         threeGlobal = installThreeGlobal(options.window)
         imageTargetController = createImageTargetController({
+          ...(options.anchoredContent ? { anchoredContent: options.anchoredContent } : {}),
           config: trackingLabConfig,
           engine,
           now: options.window.performance.now.bind(options.window.performance),

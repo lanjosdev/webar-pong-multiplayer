@@ -45,18 +45,25 @@ Cada cliente mantém localmente: câmera, tracking AR, pose e renderização.
 
 Na implementação atual, `client/src/ar/` contém loaders do engine e do manifesto
 do target, o contrato mínimo validado do SDK, o runtime de câmera e um módulo de
-cena responsável pela raiz rastreada, pelo objeto de referência e pela geometria
-de calibração opt-in. A UI consome estados discriminados de lifecycle e, no
-laboratório, snapshots internos de tracking; `XR8`, eventos crus de pose e
-Three.js não atravessam essa fronteira.
+cena responsável pela raiz rastreada. O contrato `AnchoredContent` permite
+anexar um grupo Three.js, atualizar dimensões e opacidade por frame e realizar
+teardown sem levar regras do jogo para o módulo AR. Planos, cubos e geometria de
+calibração permanecem exclusivos do laboratório.
+
+`client/src/game/pong-core.ts` contém regras e estado determinísticos sem Three.js,
+DOM ou AR. `local-pong-experience.ts` compõe core, acumulador fixo de 1/60 s,
+IA, renderer e política de suspensão. A UI transforma Pointer Events em
+deslocamento relativo e consome apenas o estado público do controller.
 
 No protótipo `world-relative`, o módulo de AR também é o proprietário da
 máquina de estados da âncora (`uncalibrated`, `aligned`, `validating`,
 `reanchoring` e `frozen`). O runtime expõe snapshots de estado e uma timeline
 compacta somente de observação. A UI pode iniciar uma nova validação, mas não
 escolhe nem aplica poses; essa responsabilidade permanece no adaptador AR. O
-gameplay futuro poderá ler o estado da âncora para pausar durante validação,
-reancoragem ou congelamento sem receber eventos crus do engine.
+controller do jogo lê somente a condição segura derivada da âncora e do SLAM.
+Ele pausa durante validação, reancoragem, congelamento ou tracking limitado e
+exige 750 ms estáveis mais uma contagem 3–2–1 antes de retomar, sem receber
+eventos crus do engine.
 
 O preenchimento decorativo das áreas externas ao canvas AR reutiliza o
 `MediaStream` entregue pelo engine em um vídeo independente e escurecido. Ele
@@ -116,8 +123,8 @@ a fase multiplayer justificar essa fronteira.
 - Não criar backend na fase 1 ou 2.
 - Manter comandos e estado do game core serializáveis o suficiente para uma
   futura camada de rede, sem projetar todo o protocolo agora.
-- O ADR-0002 autoriza um protótipo opt-in com SLAM; a adoção no fluxo público
-  ainda depende das medições documentadas.
+- O ADR-0003 autoriza `world-relative` e o Pong local no fluxo público como
+  exceção provisória de apresentação; os gates formais permanecem abertos.
 - Antes do multiplayer, criar um ADR para Socket.IO versus WebSocket puro.
 
 ## Decisões que exigem ADR

@@ -38,12 +38,18 @@ lento para frente e para trás durante a estimativa de escala. Quando uma
 reaquisição excede os limites seguros, o campo não salta: a interface solicita
 recalibração explícita.
 
-Em `world-relative`, o laboratório distingue perda do marcador, validação,
+Em `world-relative`, a interface distingue perda do marcador, validação,
 reancoragem automática, alinhamento e tracking limitado. Uma divergência grande
 confirmada oculta brevemente o campo durante a troca de âncora. O fallback
 `Buscar nova calibração` apenas solicita três observações atuais; ele não aplica
-uma pose armazenada. Esse comportamento não altera a política do fluxo público
-nem a recalibração explícita de `world-absolute`.
+uma pose armazenada e permanece exclusivo do laboratório.
+
+No fluxo público, depois da aquisição o jogador é orientado por “Vá para o lado
+azul” e confirma **Estou pronto**. O topo mostra o placar azul/vermelho; o centro
+mostra contagem, autor do ponto, pausa e fim da partida. Perder apenas o marcador
+mostra que o campo está mantido pelo SLAM e não interrompe o jogo. Tracking
+inseguro pausa a partida, informa estabilização e apresenta uma nova contagem
+3–2–1 antes da retomada.
 
 ## Estados obrigatórios de interface
 
@@ -60,7 +66,11 @@ nem a recalibração explícita de `world-absolute`.
 
 ## Controles touch
 
-- Modelo de controle ainda é TBD e deve ser prototipado em aparelho.
+- O protótipo usa arrasto relativo numa faixa transparente inferior com Pointer
+  Events e `touch-action: none`.
+- Um deslocamento horizontal igual à largura do viewport percorre toda a faixa
+  válida da raquete. O controller limita posição e velocidade lógica.
+- Novos inputs são ignorados durante contagem, ponto, pausa e fim da partida.
 - Áreas interativas devem ser grandes o suficiente e não depender apenas de
   precisão fina.
 - Considere mão dominante, alcance do polegar, safe areas e interferência com
@@ -80,10 +90,8 @@ nem a recalibração explícita de `world-absolute`.
 ## Decisões pendentes
 
 - Estilo visual, tipografia, cores e áudio.
-- Layout e gesto de cada raquete.
+- Refinamento ergonômico da altura da faixa e sensibilidade do arrasto.
 - Necessidade de onboarding ilustrado.
-- Refinamento do comportamento visual quando o target é perdido; ocultar o
-  conteúdo após 300 ms permanece a política do fluxo público; a retenção por
-  SLAM existe somente no laboratório até aprovação do gate experimental.
+- Aprovação definitiva do comportamento de pausa e retomada em aparelho.
 - Estratégia para dois jogadores e entrada em sala.
 - Critérios de sucesso de usabilidade.
